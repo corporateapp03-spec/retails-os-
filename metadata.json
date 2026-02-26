@@ -1,0 +1,5 @@
+{
+  "name": "RetailOS",
+  "description": "A professional retail management system for inventory, POS, and financial tracking, powered by Supabase.",
+  "requestFramePermissions": []
+}
