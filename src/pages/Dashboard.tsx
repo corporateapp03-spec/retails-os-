@@ -103,10 +103,55 @@ export default function Dashboard() {
       </div>
 
       {summaries.length === 0 && (
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-8 text-center">
-          <AlertCircle className="mx-auto text-blue-400 mb-3" size={32} />
-          <h3 className="text-blue-900 font-semibold">No data available</h3>
-          <p className="text-blue-700 text-sm mt-1">Check your Supabase connection and ensure the business_summary view is populated.</p>
+        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-12 text-center max-w-3xl mx-auto">
+          <AlertCircle className="mx-auto text-blue-400 mb-4" size={48} />
+          <h3 className="text-blue-900 font-bold text-xl">Dashboard is Empty</h3>
+          <p className="text-blue-700 mt-2">
+            The <strong>business_summary</strong> view returned no data. This usually means your database tables are empty or RLS is blocking access.
+          </p>
+          
+          <div className="mt-8 space-y-4 text-left">
+            <div className="bg-white p-6 rounded-xl border border-blue-100">
+              <p className="text-sm font-bold text-blue-900 uppercase mb-3 flex items-center gap-2">
+                <div className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px]">1</div>
+                Run this SQL in Supabase
+              </p>
+              <p className="text-xs text-blue-600 mb-4">
+                Copy and paste this into your <strong>Supabase SQL Editor</strong> to create the required view and permissions:
+              </p>
+              <div className="bg-slate-900 text-slate-100 p-4 rounded-lg font-mono text-[10px] overflow-x-auto leading-relaxed">
+                <pre>{`-- 1. Create the Business Summary View
+CREATE OR REPLACE VIEW business_summary AS
+SELECT 
+    c.id as category_id,
+    c.name as category_name,
+    COALESCE(SUM(CASE WHEN l.transaction_type = 'sale' THEN l.amount ELSE 0 END), 0) as total_revenue,
+    COALESCE(SUM(CASE WHEN l.transaction_type = 'sale' THEN l.amount ELSE 0 END) - 
+             SUM(CASE WHEN l.transaction_type = 'expense' THEN l.amount ELSE 0 END), 0) as total_profit,
+    COALESCE(SUM(CASE WHEN l.transaction_type = 'expense' THEN l.amount ELSE 0 END), 0) as total_expenses,
+    c.initial_capital + 
+    COALESCE(SUM(CASE WHEN l.transaction_type = 'sale' THEN l.amount ELSE 0 END), 0) - 
+    COALESCE(SUM(CASE WHEN l.transaction_type = 'expense' THEN l.amount ELSE 0 END), 0) -
+    COALESCE(SUM(CASE WHEN l.transaction_type = 'capital_deduction' THEN l.amount ELSE 0 END), 0) as capital_health
+FROM categories c
+LEFT JOIN ledger l ON c.id = l.category_id
+GROUP BY c.id, c.name, c.initial_capital;
+
+-- 2. Grant Permissions
+GRANT SELECT ON business_summary TO anon;
+GRANT SELECT ON business_summary TO authenticated;
+
+-- 3. Ensure RLS is configured for underlying tables
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ledger ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read" ON categories FOR SELECT USING (true);
+CREATE POLICY "Allow public read" ON inventory FOR SELECT USING (true);
+CREATE POLICY "Allow public read" ON ledger FOR SELECT USING (true);`}</pre>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -116,7 +161,7 @@ export default function Dashboard() {
           <div>
             <p className="text-slate-400 text-sm font-medium">Total Portfolio Value</p>
             <h2 className="text-3xl font-bold mt-2">
-              ${summaries.reduce((acc, s) => acc + (s.total_revenue || 0), 0).toLocaleString()}
+              ${(summaries.reduce((acc, s) => acc + (s.total_revenue || 0), 0) ?? 0).toLocaleString()}
             </h2>
           </div>
           <Wallet size={48} className="text-slate-700" />
@@ -125,7 +170,7 @@ export default function Dashboard() {
           <div>
             <p className="text-slate-500 text-sm font-medium">Net System Profit</p>
             <h2 className="text-3xl font-bold mt-2 text-emerald-600">
-              ${summaries.reduce((acc, s) => acc + (s.total_profit || 0), 0).toLocaleString()}
+              ${(summaries.reduce((acc, s) => acc + (s.total_profit || 0), 0) ?? 0).toLocaleString()}
             </h2>
           </div>
           <TrendingUp size={48} className="text-emerald-100" />

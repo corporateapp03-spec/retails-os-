@@ -21,15 +21,40 @@ export default function POS() {
 
   async function searchItems() {
     try {
-      const { data, error } = await supabase
+      // Fetch items first
+      const { data: items, error: itemsError } = await supabase
         .from('inventory')
-        .select('*, categories(*)')
+        .select('*')
         .ilike('name', `%${searchTerm}%`)
         .eq('status', 'in_stock')
         .limit(5);
       
-      if (error) throw error;
-      setSearchResults(data || []);
+      if (itemsError) throw itemsError;
+      if (!items || items.length === 0) {
+        setSearchResults([]);
+        return;
+      }
+
+      // Fetch relevant categories for these items
+      const categoryIds = [...new Set(items.map(i => i.category_id))];
+      const { data: cats, error: catsError } = await supabase
+        .from('categories')
+        .select('*')
+        .in('id', categoryIds);
+
+      if (catsError) throw catsError;
+
+      const categoriesMap = (cats || []).reduce((acc, cat) => {
+        acc[cat.id] = cat;
+        return acc;
+      }, {} as Record<string, any>);
+
+      const joinedResults = items.map(item => ({
+        ...item,
+        categories: categoriesMap[item.category_id]
+      }));
+
+      setSearchResults(joinedResults);
     } catch (err) {
       console.error('Error searching items:', err);
     }
@@ -118,7 +143,7 @@ export default function POS() {
                         <p className="text-xs text-slate-500">{item.sku} • {item.categories?.name}</p>
                       </div>
                     </div>
-                    <span className="font-bold text-blue-600">${item.selling_price.toLocaleString()}</span>
+                    <span className="font-bold text-blue-600">${(item.selling_price ?? 0).toLocaleString()}</span>
                   </button>
                 ))}
               </div>
@@ -154,12 +179,12 @@ export default function POS() {
                 <div className="flex-1">
                   <p className="text-sm font-medium text-slate-900">{c.item.name}</p>
                   <p className="text-xs text-slate-500">
-                    {c.quantity} x ${c.item.selling_price.toLocaleString()}
+                    {c.quantity} x ${(c.item.selling_price ?? 0).toLocaleString()}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold text-slate-900">
-                    ${(c.item.selling_price * c.quantity).toLocaleString()}
+                    ${((c.item.selling_price ?? 0) * c.quantity).toLocaleString()}
                   </span>
                   <button 
                     onClick={() => removeFromCart(c.item.id)}
@@ -182,7 +207,7 @@ export default function POS() {
         <div className="p-6 bg-slate-50 border-t border-slate-100 space-y-4">
           <div className="flex justify-between items-center text-slate-500 text-sm">
             <span>Subtotal</span>
-            <span>${cartTotal.toLocaleString()}</span>
+            <span>${(cartTotal ?? 0).toLocaleString()}</span>
           </div>
           <div className="flex justify-between items-center text-slate-500 text-sm">
             <span>Tax (0%)</span>
@@ -190,7 +215,7 @@ export default function POS() {
           </div>
           <div className="flex justify-between items-center pt-2">
             <span className="text-lg font-bold text-slate-900">Total</span>
-            <span className="text-2xl font-black text-blue-600">${cartTotal.toLocaleString()}</span>
+            <span className="text-2xl font-black text-blue-600">${(cartTotal ?? 0).toLocaleString()}</span>
           </div>
 
           {success ? (

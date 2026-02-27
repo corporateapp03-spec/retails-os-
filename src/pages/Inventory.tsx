@@ -30,19 +30,37 @@ export default function Inventory() {
     setLoading(true);
     setError(null);
     try {
+      // Fetch items and categories separately to avoid "relationship not found" errors
+      // if the foreign key constraint is missing in the database.
       const [itemsRes, catsRes] = await Promise.all([
-        supabase.from('inventory').select('*, categories(*)'),
+        supabase.from('inventory').select('*'),
         supabase.from('categories').select('*')
       ]);
 
       if (itemsRes.error) throw itemsRes.error;
       if (catsRes.error) throw catsRes.error;
 
-      setItems(itemsRes.data || []);
+      const categoriesMap = (catsRes.data || []).reduce((acc, cat) => {
+        acc[cat.id] = cat;
+        return acc;
+      }, {} as Record<string, Category>);
+
+      const joinedItems = (itemsRes.data || []).map(item => ({
+        ...item,
+        categories: categoriesMap[item.category_id]
+      }));
+
+      setItems(joinedItems);
       setCategories(catsRes.data || []);
     } catch (err) {
       console.error('Error fetching inventory:', err);
-      setError((err as any).message || 'Failed to fetch inventory');
+      const msg = (err as any).message || 'Failed to fetch inventory';
+      
+      if (msg.includes('relationship')) {
+        setError('Database Relationship Error: The "inventory" table is missing a Foreign Key constraint to "categories". Please run the SQL fix below.');
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -129,14 +147,68 @@ export default function Inventory() {
               ) : error ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center">
-                    <div className="flex flex-col items-center text-rose-600">
+                    <div className="flex flex-col items-center text-rose-600 max-w-xl mx-auto">
                       <AlertCircle size={32} className="mb-2" />
                       <p className="font-medium">Error: {error}</p>
-                      <p className="text-xs mt-1 text-rose-500">Check RLS policies or credentials</p>
+                      {error.includes('Relationship') && (
+                        <div className="mt-4 p-4 bg-slate-900 text-slate-100 rounded-lg text-left font-mono text-xs w-full overflow-x-auto">
+                          <p className="text-slate-400 mb-2">-- Run this in Supabase SQL Editor:</p>
+                          <code>
+                            ALTER TABLE inventory<br />
+                            ADD CONSTRAINT fk_category<br />
+                            FOREIGN KEY (category_id)<br />
+                            REFERENCES categories(id);
+                          </code>
+                        </div>
+                      )}
+                      <p className="text-xs mt-4 text-rose-500">Check RLS policies or credentials if the error persists.</p>
                     </div>
                   </td>
                 </tr>
-              ) : filteredItems.length > 0 ? (
+              ) : items.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-16 text-center">
+                    <div className="max-w-md mx-auto">
+                      <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                        <Package size={24} />
+                      </div>
+                      <h3 className="text-slate-900 font-semibold text-lg">No Items Found</h3>
+                      <p className="text-slate-500 text-sm mt-2">
+                        We connected to Supabase, but the <strong>inventory</strong> table returned 0 rows.
+                      </p>
+                      
+                      <div className="mt-8 p-4 bg-blue-50 border border-blue-100 rounded-xl text-left">
+                        <p className="text-xs font-bold text-blue-900 uppercase tracking-wider mb-3">Why is this empty?</p>
+                        <ul className="text-xs text-blue-700 space-y-2 list-disc pl-4">
+                          <li>
+                            <strong>Row Level Security (RLS):</strong> Your table likely has RLS enabled but no policy. 
+                            Go to Supabase &gt; Authentication &gt; Policies and add a "SELECT" policy for the <code>anon</code> role.
+                          </li>
+                          <li>
+                            <strong>Table Name:</strong> Ensure your table is named exactly <code>inventory</code> (all lowercase).
+                          </li>
+                          <li>
+                            <strong>Data Sync:</strong> If you just added data, try refreshing the page.
+                          </li>
+                        </ul>
+                      </div>
+                      
+                      <button 
+                        onClick={() => fetchData()}
+                        className="mt-6 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+                      >
+                        Refresh Data
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredItems.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    No items found matching "{searchTerm}".
+                  </td>
+                </tr>
+              ) : (
                 filteredItems.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
@@ -153,14 +225,14 @@ export default function Inventory() {
                         {item.categories?.name || 'Uncategorized'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-600">${item.cost.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-slate-900">${item.selling_price.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">${(item.cost ?? 0).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-slate-900">${(item.selling_price ?? 0).toLocaleString()}</td>
                     <td className="px-6 py-4">
                       <span className={cn(
                         "text-xs font-medium px-2 py-1 rounded-full",
                         item.status === 'in_stock' ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
                       )}>
-                        {item.status.replace('_', ' ')}
+                        {(item.status || '').replace('_', ' ')}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -170,12 +242,6 @@ export default function Inventory() {
                     </td>
                   </tr>
                 ))
-              ) : (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                    No items found matching your search.
-                  </td>
-                </tr>
               )}
             </tbody>
           </table>
