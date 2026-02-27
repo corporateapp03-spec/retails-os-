@@ -34,17 +34,37 @@ export default function Sales() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fetchError } = await supabase
+      const { data: ledgerData, error: ledgerError } = await supabase
         .from('ledger')
-        .select(`
-          *,
-          inventory:inventory_item_id (*)
-        `)
+        .select('*')
         .eq('transaction_type', 'sale')
         .order('created_at', { ascending: false });
 
-      if (fetchError) throw fetchError;
-      setSales(data || []);
+      if (ledgerError) throw ledgerError;
+
+      if (ledgerData && ledgerData.length > 0) {
+        const itemIds = [...new Set(ledgerData.map(s => s.inventory_item_id).filter(Boolean))];
+        const { data: inventoryData, error: inventoryError } = await supabase
+          .from('inventory')
+          .select('*')
+          .in('id', itemIds);
+
+        if (inventoryError) throw inventoryError;
+
+        const inventoryMap = (inventoryData || []).reduce((acc, item) => {
+          acc[item.id] = item;
+          return acc;
+        }, {} as Record<string, any>);
+
+        const joinedData = ledgerData.map(sale => ({
+          ...sale,
+          inventory: inventoryMap[sale.inventory_item_id]
+        }));
+
+        setSales(joinedData);
+      } else {
+        setSales([]);
+      }
     } catch (err) {
       console.error('Error fetching sales:', err);
       setError((err as any)?.message || 'Failed to load sales archive.');
@@ -99,7 +119,7 @@ export default function Sales() {
     try {
       const { error: updateError } = await supabase
         .from('ledger')
-        .update({ amount: editAmount })
+        .update({ selling_price: editAmount })
         .eq('id', sale.id);
 
       if (updateError) throw updateError;
@@ -128,7 +148,7 @@ export default function Sales() {
           <div>
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Total Sales Revenue</p>
             <h2 className="text-4xl font-black mt-2">
-              ${sales.reduce((acc, s) => acc + (s?.amount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              ${sales.reduce((acc, s) => acc + (s?.selling_price || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h2>
             <p className="text-[10px] text-slate-500 mt-2 font-mono">Archive Source: ledger WHERE type='sale'</p>
           </div>
@@ -239,7 +259,7 @@ export default function Sales() {
                         </div>
                       ) : (
                         <span className="text-sm font-black text-blue-600">
-                          ${(sale?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ${(sale?.selling_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </span>
                       )}
                     </td>
