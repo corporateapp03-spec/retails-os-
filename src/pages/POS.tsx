@@ -20,14 +20,19 @@ export default function POS() {
   }, [searchTerm]);
 
   async function searchItems() {
-    const { data, error } = await supabase
-      .from('inventory')
-      .select('*, categories(*)')
-      .ilike('name', `%${searchTerm}%`)
-      .eq('status', 'in_stock')
-      .limit(5);
-    
-    if (!error) setSearchResults(data || []);
+    try {
+      const { data, error } = await supabase
+        .from('inventory')
+        .select('*, categories(*)')
+        .ilike('name', `%${searchTerm}%`)
+        .eq('status', 'in_stock')
+        .limit(5);
+      
+      if (error) throw error;
+      setSearchResults(data || []);
+    } catch (err) {
+      console.error('Error searching items:', err);
+    }
   }
 
   const addToCart = (item: InventoryItem) => {

@@ -7,10 +7,12 @@ import { cn } from '../lib/utils';
 export default function Dashboard() {
   const [summaries, setSummaries] = useState<BusinessSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchSummary() {
       try {
+        setError(null);
         const { data, error } = await supabase
           .from('business_summary')
           .select('*');
@@ -19,8 +21,9 @@ export default function Dashboard() {
         setSummaries(data || []);
       } catch (err) {
         console.error('Error fetching business summary:', err);
+        setError((err as any).message || 'Failed to fetch data');
       } finally {
-        setLoading(setLoading(false) as any);
+        setLoading(false);
       }
     }
 
@@ -31,6 +34,30 @@ export default function Dashboard() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-rose-50 border border-rose-200 rounded-xl p-8 text-center max-w-2xl mx-auto">
+        <AlertCircle className="mx-auto text-rose-500 mb-3" size={32} />
+        <h3 className="text-rose-900 font-semibold">Connection Error</h3>
+        <p className="text-rose-700 text-sm mt-1">{error}</p>
+        <div className="mt-6 p-4 bg-white rounded-lg border border-rose-100 text-left">
+          <p className="text-xs font-bold text-rose-900 uppercase tracking-wider mb-2">Troubleshooting Steps:</p>
+          <ul className="text-xs text-rose-700 space-y-1 list-disc pl-4">
+            <li>Verify <strong>VITE_SUPABASE_URL</strong> and <strong>VITE_SUPABASE_ANON_KEY</strong> in Secrets.</li>
+            <li>Ensure <strong>Row Level Security (RLS)</strong> policies are created for the 'anon' role.</li>
+            <li>Check if the <strong>business_summary</strong> view exists in your database.</li>
+          </ul>
+        </div>
+        <button 
+          onClick={() => window.location.reload()}
+          className="mt-6 px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-medium hover:bg-rose-700 transition-colors"
+        >
+          Retry Connection
+        </button>
       </div>
     );
   }

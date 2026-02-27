@@ -20,9 +20,15 @@ export default function Outflows() {
 
   useEffect(() => {
     async function fetchCategories() {
-      const { data, error } = await supabase.from('categories').select('*');
-      if (!error) setCategories(data || []);
-      setLoading(false);
+      try {
+        const { data, error } = await supabase.from('categories').select('*');
+        if (error) throw error;
+        setCategories(data || []);
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+      } finally {
+        setLoading(false);
+      }
     }
     fetchCategories();
   }, []);

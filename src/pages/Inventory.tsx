@@ -8,6 +8,7 @@ export default function Inventory() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   
@@ -27,6 +28,7 @@ export default function Inventory() {
 
   async function fetchData() {
     setLoading(true);
+    setError(null);
     try {
       const [itemsRes, catsRes] = await Promise.all([
         supabase.from('inventory').select('*, categories(*)'),
@@ -40,6 +42,7 @@ export default function Inventory() {
       setCategories(catsRes.data || []);
     } catch (err) {
       console.error('Error fetching inventory:', err);
+      setError((err as any).message || 'Failed to fetch inventory');
     } finally {
       setLoading(false);
     }
@@ -121,6 +124,16 @@ export default function Inventory() {
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center text-rose-600">
+                      <AlertCircle size={32} className="mb-2" />
+                      <p className="font-medium">Error: {error}</p>
+                      <p className="text-xs mt-1 text-rose-500">Check RLS policies or credentials</p>
+                    </div>
                   </td>
                 </tr>
               ) : filteredItems.length > 0 ? (
