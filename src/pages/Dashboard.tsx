@@ -58,16 +58,16 @@ export default function Dashboard() {
                 <span className="font-semibold text-emerald-600">+${summary.total_profit?.toLocaleString() || '0'}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500">Expenses</span>
+                <span className="text-slate-500">Total Expenses</span>
                 <span className="font-semibold text-rose-600">-${summary.total_expenses?.toLocaleString() || '0'}</span>
               </div>
               <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
                 <span className="text-sm font-medium text-slate-700">Capital Health</span>
                 <span className={cn(
                   "text-sm font-bold px-2 py-1 rounded",
-                  summary.current_capital > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+                  (summary.capital_health ?? 0) >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
                 )}>
-                  ${summary.current_capital?.toLocaleString() || '0'}
+                  ${summary.capital_health?.toLocaleString() || '0'}
                 </span>
               </div>
             </div>

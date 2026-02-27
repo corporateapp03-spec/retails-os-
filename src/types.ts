@@ -30,5 +30,5 @@ export interface BusinessSummary {
   total_revenue: number;
   total_profit: number;
   total_expenses: number;
-  current_capital: number;
+  capital_health?: number; // Terminology from prompt
 }
