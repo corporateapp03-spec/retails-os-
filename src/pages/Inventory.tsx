@@ -17,9 +17,9 @@ import { cn } from '../lib/utils';
 import Loading from '../components/Loading';
 
 const CATEGORY_MAP: Record<number, string> = {
-  1: 'Parts',
-  2: 'Oils',
-  3: 'Electrical'
+  1: 'Oils',
+  2: 'Spare Parts',
+  3: 'Electrical Spares'
 };
 
 export default function Inventory() {
@@ -34,7 +34,7 @@ export default function Inventory() {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    category: 'Parts',
+    category: 'Oils',
     cost_price: 0,
     selling_price: 0,
     category_id: 1,
@@ -52,7 +52,7 @@ export default function Inventory() {
       setFormData({
         name: editingItem?.name || '',
         code: editingItem?.code || '',
-        category: editingItem?.category || 'Parts',
+        category: editingItem?.category || 'Oils',
         cost_price: editingItem?.cost_price || 0,
         selling_price: editingItem?.selling_price || 0,
         category_id: editingItem?.category_id || 1,
@@ -65,7 +65,7 @@ export default function Inventory() {
       setFormData({
         name: '',
         code: '',
-        category: 'Parts',
+        category: 'Oils',
         cost_price: 0,
         selling_price: 0,
         category_id: 1,
@@ -421,9 +421,9 @@ export default function Inventory() {
                   }}
                   className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white font-bold text-slate-700"
                 >
-                  <option value={1}>1 - Parts</option>
-                  <option value={2}>2 - Oils</option>
-                  <option value={3}>3 - Electrical</option>
+                  <option value={1}>1 - Oils</option>
+                  <option value={2}>2 - Spare Parts</option>
+                  <option value={3}>3 - Electrical Spares</option>
                 </select>
                 <p className="text-[10px] text-slate-400 italic">Maps to Integer ID and Text Category in table.</p>
               </div>

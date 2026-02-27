@@ -4,6 +4,12 @@ import { InventoryItem } from '../types';
 import { Search, ShoppingCart, Trash2, CreditCard, Package, CheckCircle2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
+const CATEGORY_MAP: Record<number, string> = {
+  1: 'Oils',
+  2: 'Spare Parts',
+  3: 'Electrical Spares'
+};
+
 export default function POS() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
@@ -129,7 +135,7 @@ export default function POS() {
                       </div>
                       <div>
                         <p className="font-medium text-slate-900">{item.name}</p>
-                        <p className="text-xs text-slate-500">{item.code} • {item.category}</p>
+                        <p className="text-xs text-slate-500">{item.code} • {CATEGORY_MAP[item.category_id] || item.category}</p>
                       </div>
                     </div>
                     <span className="font-bold text-blue-600">${(item.selling_price ?? 0).toLocaleString()}</span>
