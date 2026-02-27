@@ -7,13 +7,13 @@ export interface Category {
 export interface InventoryItem {
   id: string;
   name: string;
-  sku: string;
+  code: string;
   cost: number;
   selling_price: number;
-  category_id: string;
+  category_id: number;
+  min_stock: number;
+  max_stock: number;
   quantity?: number;
-  status: 'in_stock' | 'out_of_stock' | 'discontinued';
-  categories?: Category;
 }
 
 export interface LedgerEntry {

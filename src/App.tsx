@@ -1,18 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
-  Package, 
+  Package,
   ShoppingCart, 
   ArrowUpRight, 
   Menu, 
   X,
-  Search,
-  Plus,
-  Filter,
-  MoreVertical,
-  TrendingUp,
-  Wallet,
-  AlertCircle
+  Search
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import Dashboard from './pages/Dashboard';

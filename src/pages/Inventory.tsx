@@ -1,13 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { InventoryItem, Category } from '../types';
-import { Search, Plus, Filter, Package, AlertCircle, X, Edit2 } from 'lucide-react';
+import { InventoryItem } from '../types';
+import { 
+  Search, 
+  Plus, 
+  Edit2, 
+  Trash2, 
+  Package, 
+  AlertCircle, 
+  X, 
+  TrendingUp, 
+  DollarSign,
+  AlertTriangle
+} from 'lucide-react';
 import { cn } from '../lib/utils';
 import Loading from '../components/Loading';
 
+const CATEGORY_MAP: Record<number, string> = {
+  1: 'Parts',
+  2: 'Oils',
+  3: 'Electrical'
+};
+
 export default function Inventory() {
   const [items, setItems] = useState<InventoryItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,12 +33,12 @@ export default function Inventory() {
   // Form state
   const [formData, setFormData] = useState({
     name: '',
-    sku: '',
+    code: '',
     cost: 0,
     selling_price: 0,
-    quantity: 0,
-    category_id: '',
-    status: 'in_stock' as const
+    category_id: 1,
+    min_stock: 0,
+    max_stock: 0
   });
 
   useEffect(() => {
@@ -32,24 +48,24 @@ export default function Inventory() {
   useEffect(() => {
     if (editingItem) {
       setFormData({
-        name: editingItem.name || '',
-        sku: editingItem.sku || '',
-        cost: editingItem.cost || 0,
-        selling_price: editingItem.selling_price || 0,
-        quantity: editingItem.quantity || 0,
-        category_id: editingItem.category_id || '',
-        status: editingItem.status || 'in_stock'
+        name: editingItem?.name || '',
+        code: editingItem?.code || '',
+        cost: editingItem?.cost || 0,
+        selling_price: editingItem?.selling_price || 0,
+        category_id: editingItem?.category_id || 1,
+        min_stock: editingItem?.min_stock || 0,
+        max_stock: editingItem?.max_stock || 0
       });
       setIsModalOpen(true);
     } else {
       setFormData({
         name: '',
-        sku: '',
+        code: '',
         cost: 0,
         selling_price: 0,
-        quantity: 0,
-        category_id: '',
-        status: 'in_stock'
+        category_id: 1,
+        min_stock: 0,
+        max_stock: 0
       });
     }
   }, [editingItem]);
@@ -58,69 +74,74 @@ export default function Inventory() {
     setLoading(true);
     setError(null);
     try {
-      const [itemsRes, catsRes] = await Promise.all([
-        supabase.from('inventory').select('*'),
-        supabase.from('categories').select('*')
-      ]);
+      const { data, error: fetchError } = await supabase
+        .from('inventory')
+        .select('*');
 
-      if (itemsRes.error) throw itemsRes.error;
-      if (catsRes.error) throw catsRes.error;
-
-      const categoriesMap = (catsRes.data || []).reduce((acc, cat) => {
-        acc[cat.id] = cat;
-        return acc;
-      }, {} as Record<string, Category>);
-
-      const joinedItems = (itemsRes.data || []).map(item => ({
-        ...item,
-        categories: categoriesMap[item.category_id]
-      }));
-
-      setItems(joinedItems);
-      setCategories(catsRes.data || []);
+      if (fetchError) throw fetchError;
+      setItems(data || []);
     } catch (err) {
       console.error('Error fetching inventory:', err);
-      const msg = (err as any).message || 'Failed to fetch inventory';
-      setError(msg);
+      setError((err as any)?.message || 'Failed to fetch inventory data from Supabase.');
     } finally {
       setLoading(false);
     }
   }
 
+  const totalAssetValue = items.reduce((acc, item) => acc + (item?.cost || 0), 0);
+
   const filteredItems = items.filter(item => 
-    (item.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (item.sku || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+    (item?.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (item?.code || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     
     if (!formData.category_id) {
-      alert('Error: Category is required.');
+      setError('Category ID is required for database mapping.');
       return;
     }
 
     try {
       if (editingItem) {
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from('inventory')
           .update(formData)
           .eq('id', editingItem.id);
         
-        if (error) throw error;
+        if (updateError) throw updateError;
       } else {
-        const { error } = await supabase
+        const { error: insertError } = await supabase
           .from('inventory')
           .insert([formData]);
         
-        if (error) throw error;
+        if (insertError) throw insertError;
       }
       
       setIsModalOpen(false);
       setEditingItem(null);
       fetchData();
     } catch (err) {
-      alert('Error saving item: ' + (err as Error).message);
+      setError('Database Write Error: ' + (err as any)?.message);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!window.confirm('Are you sure you want to delete this item? This action will remove the row from the inventory table.')) {
+      return;
+    }
+
+    try {
+      const { error: deleteError } = await supabase
+        .from('inventory')
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) throw deleteError;
+      fetchData();
+    } catch (err) {
+      setError('Database Delete Error: ' + (err as any)?.message);
     }
   }
 
@@ -130,140 +151,160 @@ export default function Inventory() {
 
   return (
     <div className="space-y-6">
+      {/* Asset Valuation Header */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-lg border border-slate-800 flex items-center justify-between">
+          <div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Total Asset Value</p>
+            <h2 className="text-3xl font-black mt-2 flex items-baseline gap-1">
+              <span className="text-blue-400 text-xl">$</span>
+              {totalAssetValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </h2>
+            <p className="text-[10px] text-slate-500 mt-2 font-mono">SUM(inventory.cost)</p>
+          </div>
+          <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-blue-400">
+            <DollarSign size={24} />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 flex items-center justify-between">
+          <div>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Stock Items</p>
+            <h2 className="text-3xl font-black mt-2 text-slate-900">
+              {items.length}
+            </h2>
+          </div>
+          <Package size={32} className="text-slate-200" />
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 flex items-center justify-between">
+          <div>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">System Status</p>
+            <div className="flex items-center gap-2 mt-2">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-sm font-bold text-slate-700">Live Connection</span>
+            </div>
+          </div>
+          <TrendingUp size={32} className="text-slate-200" />
+        </div>
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+          <AlertTriangle className="text-rose-600 shrink-0" size={20} />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-rose-900">Database Error Detected</p>
+            <p className="text-xs text-rose-700 mt-1 font-mono">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="text-rose-400 hover:text-rose-600">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
             type="text" 
-            placeholder="Search by name or SKU..." 
+            placeholder="Search by name or code..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
           />
         </div>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            <Filter size={16} />
-            Filter
-          </button>
-          <button 
-            onClick={() => {
-              setEditingItem(null);
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            <Plus size={16} />
-            New Item
-          </button>
-        </div>
+        <button 
+          onClick={() => {
+            setEditingItem(null);
+            setIsModalOpen(true);
+          }}
+          className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
+        >
+          <Plus size={18} />
+          Add Item
+        </button>
       </div>
 
+      {/* Inventory Table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-bottom border-slate-200">
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Product</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Code/SKU</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cost</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Price</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Product Details</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Code</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Price</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock (Min/Max)</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {error ? (
+              {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center">
-                    <div className="flex flex-col items-center text-rose-600 max-w-xl mx-auto">
-                      <AlertCircle size={32} className="mb-2" />
-                      <p className="font-medium">Error: {error}</p>
-                      <p className="text-xs mt-4 text-rose-500">Check RLS policies or credentials if the error persists.</p>
+                  <td colSpan={7} className="px-6 py-16 text-center">
+                    <div className="max-w-xs mx-auto">
+                      <Package size={40} className="mx-auto text-slate-200 mb-4" />
+                      <p className="text-slate-500 font-medium">No inventory records found.</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Check your Supabase connection or filters.</p>
                     </div>
-                  </td>
-                </tr>
-              ) : items.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-16 text-center">
-                    <div className="max-w-md mx-auto">
-                      <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                        <Package size={24} />
-                      </div>
-                      <h3 className="text-slate-900 font-semibold text-lg">No Items Found</h3>
-                      <p className="text-slate-500 text-sm mt-2">
-                        We connected to Supabase, but the <strong>inventory</strong> table returned 0 rows.
-                      </p>
-                      
-                      <div className="mt-8 p-4 bg-blue-50 border border-blue-100 rounded-xl text-left">
-                        <p className="text-xs font-bold text-blue-900 uppercase tracking-wider mb-3">Why is this empty?</p>
-                        <ul className="text-xs text-blue-700 space-y-2 list-disc pl-4">
-                          <li>
-                            <strong>Row Level Security (RLS):</strong> Your table likely has RLS enabled but no policy. 
-                            Go to Supabase &gt; Authentication &gt; Policies and add a "SELECT" policy for the <code>anon</code> role.
-                          </li>
-                          <li>
-                            <strong>Table Name:</strong> Ensure your table is named exactly <code>inventory</code> (all lowercase).
-                          </li>
-                          <li>
-                            <strong>Data Sync:</strong> If you just added data, try refreshing the page.
-                          </li>
-                        </ul>
-                      </div>
-                      
-                      <button 
-                        onClick={() => fetchData()}
-                        className="mt-6 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-                      >
-                        Refresh Data
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : filteredItems.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
-                    No items found matching "{searchTerm}".
                   </td>
                 </tr>
               ) : (
                 filteredItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
+                  <tr key={item?.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
-                          <Package size={20} />
-                        </div>
-                        <span className="font-medium text-slate-900">{item.name}</span>
+                      <span className="font-bold text-slate-900 block">{item?.name || 'Unnamed Product'}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">{item?.id}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-600">
+                        {item?.code || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-xs font-bold text-slate-700">
+                        {CATEGORY_MAP[item?.category_id] || `ID: ${item?.category_id}`}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm font-medium text-slate-600">
+                        ${(item?.cost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm font-black text-blue-600">
+                        ${(item?.selling_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900">{item?.quantity ?? 0}</span>
+                        <span className="text-[10px] text-slate-400">
+                          ({item?.min_stock ?? 0} / {item?.max_stock ?? 0})
+                        </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-500 font-mono">{item.sku}</td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-slate-600 bg-slate-100 px-2 py-1 rounded">
-                        {item.categories?.name || 'Uncategorized'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-600">${(item.cost ?? 0).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-slate-900">${(item.selling_price ?? 0).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{item.quantity ?? 0}</td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        "text-xs font-medium px-2 py-1 rounded-full",
-                        item.status === 'in_stock' ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
-                      )}>
-                        {(item.status || '').replace('_', ' ')}
-                      </span>
-                    </td>
                     <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={() => setEditingItem(item)}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-100 transition-all"
-                      >
-                        <Edit2 size={12} />
-                        Modify
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => setEditingItem(item)}
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                          title="Edit Item"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(item.id)}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                          title="Delete Item"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -273,125 +314,139 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* New Item Modal (Slide-over style) */}
+      {/* CRUD Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => {
+            setIsModalOpen(false);
+            setEditingItem(null);
+          }} />
           <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-slate-900">
-                {editingItem ? 'Modify Inventory Item' : 'Add New Inventory Item'}
-              </h2>
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h2 className="text-xl font-black text-slate-900">
+                  {editingItem ? 'Modify Item' : 'Register New Item'}
+                </h2>
+                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mt-1">
+                  Database Reader/Writer Mode
+                </p>
+              </div>
               <button 
                 onClick={() => {
                   setIsModalOpen(false);
                   setEditingItem(null);
                 }} 
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                className="p-2 hover:bg-white rounded-full transition-colors shadow-sm"
               >
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+            
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-6">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Product Name</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Product Name</label>
                 <input 
                   required
                   type="text" 
                   value={formData.name}
                   onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="e.g. Wireless Mouse"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+                  placeholder="Official Product Name"
                 />
               </div>
+
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Code / SKU</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Database Code (SKU)</label>
                 <input 
                   required
                   type="text" 
-                  value={formData.sku}
-                  onChange={e => setFormData({...formData, sku: e.target.value})}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="WM-001"
+                  value={formData.code}
+                  onChange={e => setFormData({...formData, code: e.target.value})}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                  placeholder="UNIQUE_CODE_001"
                 />
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Cost Price ($)</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost Price ($)</label>
                   <input 
                     required
                     type="number" 
                     step="0.01"
                     value={formData.cost}
                     onChange={e => setFormData({...formData, cost: parseFloat(e.target.value)})}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Selling Price ($)</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selling Price ($)</label>
                   <input 
                     required
                     type="number" 
                     step="0.01"
                     value={formData.selling_price}
                     onChange={e => setFormData({...formData, selling_price: parseFloat(e.target.value)})}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-600"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Category Mapping</label>
+                <select 
+                  required
+                  value={formData.category_id}
+                  onChange={e => setFormData({...formData, category_id: parseInt(e.target.value)})}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white font-bold text-slate-700"
+                >
+                  <option value={1}>1 - Parts</option>
+                  <option value={2}>2 - Oils</option>
+                  <option value={3}>3 - Electrical</option>
+                </select>
+                <p className="text-[10px] text-slate-400 italic">Maps to Integer ID in categories table.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min Stock</label>
+                  <input 
+                    required
+                    type="number" 
+                    value={formData.min_stock}
+                    onChange={e => setFormData({...formData, min_stock: parseInt(e.target.value)})}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Max Stock</label>
+                  <input 
+                    required
+                    type="number" 
+                    value={formData.max_stock}
+                    onChange={e => setFormData({...formData, max_stock: parseInt(e.target.value)})}
                     className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Current Quantity</label>
-                <input 
-                  required
-                  type="number" 
-                  value={formData.quantity}
-                  onChange={e => setFormData({...formData, quantity: parseInt(e.target.value)})}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Category</label>
-                <select 
-                  required
-                  value={formData.category_id}
-                  onChange={e => setFormData({...formData, category_id: e.target.value})}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white"
-                >
-                  <option value="">Select a category</option>
-                  {categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Status</label>
-                <select 
-                  value={formData.status}
-                  onChange={e => setFormData({...formData, status: e.target.value as any})}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white"
-                >
-                  <option value="in_stock">In Stock</option>
-                  <option value="out_of_stock">Out of Stock</option>
-                  <option value="discontinued">Discontinued</option>
-                </select>
-              </div>
             </form>
-            <div className="p-6 border-t border-slate-100 flex gap-3">
+
+            <div className="p-8 border-t border-slate-100 bg-slate-50 flex gap-4">
               <button 
                 type="button"
                 onClick={() => {
                   setIsModalOpen(false);
                   setEditingItem(null);
                 }}
-                className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-500 hover:bg-white transition-all"
               >
-                Cancel
+                Discard
               </button>
               <button 
                 onClick={handleSubmit}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
               >
-                {editingItem ? 'Update Item' : 'Save Item'}
+                {editingItem ? 'Commit Update' : 'Commit Insert'}
               </button>
             </div>
           </div>

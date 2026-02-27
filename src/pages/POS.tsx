@@ -120,7 +120,7 @@ export default function POS() {
           <div className="relative">
             <input 
               type="text" 
-              placeholder="Search by product name or SKU..." 
+              placeholder="Search by product name or Code..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-4 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-lg"
@@ -140,7 +140,7 @@ export default function POS() {
                       </div>
                       <div>
                         <p className="font-medium text-slate-900">{item.name}</p>
-                        <p className="text-xs text-slate-500">{item.sku} • {item.categories?.name}</p>
+                        <p className="text-xs text-slate-500">{item.code} • {item.categories?.name}</p>
                       </div>
                     </div>
                     <span className="font-bold text-blue-600">${(item.selling_price ?? 0).toLocaleString()}</span>
