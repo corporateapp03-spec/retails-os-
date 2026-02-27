@@ -119,7 +119,7 @@ export default function Sales() {
     try {
       const { error: updateError } = await supabase
         .from('ledger')
-        .update({ selling_price: editAmount })
+        .update({ amount: editAmount })
         .eq('id', sale.id);
 
       if (updateError) throw updateError;
@@ -148,7 +148,7 @@ export default function Sales() {
           <div>
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Total Sales Revenue</p>
             <h2 className="text-4xl font-black mt-2">
-              ${sales.reduce((acc, s) => acc + (s?.selling_price || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              ${sales.reduce((acc, s) => acc + (s?.amount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h2>
             <p className="text-[10px] text-slate-500 mt-2 font-mono">Archive Source: ledger WHERE type='sale'</p>
           </div>
@@ -259,7 +259,7 @@ export default function Sales() {
                         </div>
                       ) : (
                         <span className="text-sm font-black text-blue-600">
-                          ${(sale?.selling_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ${(sale?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </span>
                       )}
                     </td>

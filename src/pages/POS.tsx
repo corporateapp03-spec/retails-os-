@@ -95,8 +95,7 @@ export default function POS() {
         category_id: c.item.category_id,
         inventory_item_id: c.item.id,
         quantity: c.quantity,
-        selling_price: c.item.selling_price * c.quantity,
-        cost: (c.item.cost_price || 0) * c.quantity,
+        amount: c.item.selling_price * c.quantity,
         transaction_type: 'sale',
         fund_source: paymentMethod
       }));
