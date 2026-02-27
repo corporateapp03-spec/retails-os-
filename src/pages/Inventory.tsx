@@ -34,7 +34,7 @@ export default function Inventory() {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    cost: 0,
+    cost_price: 0,
     selling_price: 0,
     category_id: 1,
     min_stock: 0,
@@ -50,7 +50,7 @@ export default function Inventory() {
       setFormData({
         name: editingItem?.name || '',
         code: editingItem?.code || '',
-        cost: editingItem?.cost || 0,
+        cost_price: editingItem?.cost_price || 0,
         selling_price: editingItem?.selling_price || 0,
         category_id: editingItem?.category_id || 1,
         min_stock: editingItem?.min_stock || 0,
@@ -61,7 +61,7 @@ export default function Inventory() {
       setFormData({
         name: '',
         code: '',
-        cost: 0,
+        cost_price: 0,
         selling_price: 0,
         category_id: 1,
         min_stock: 0,
@@ -88,7 +88,7 @@ export default function Inventory() {
     }
   }
 
-  const totalAssetValue = items.reduce((acc, item) => acc + (item?.cost || 0), 0);
+  const totalAssetValue = items.reduce((acc, item) => acc + (item?.cost_price || 0), 0);
 
   const filteredItems = items.filter(item => 
     (item?.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
@@ -160,7 +160,7 @@ export default function Inventory() {
               <span className="text-blue-400 text-xl">$</span>
               {totalAssetValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h2>
-            <p className="text-[10px] text-slate-500 mt-2 font-mono">SUM(inventory.cost)</p>
+            <p className="text-[10px] text-slate-500 mt-2 font-mono">SUM(inventory.cost_price)</p>
           </div>
           <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-blue-400">
             <DollarSign size={24} />
@@ -272,7 +272,7 @@ export default function Inventory() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm font-medium text-slate-600">
-                        ${(item?.cost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        ${(item?.cost_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -374,8 +374,8 @@ export default function Inventory() {
                     required
                     type="number" 
                     step="0.01"
-                    value={formData.cost}
-                    onChange={e => setFormData({...formData, cost: parseFloat(e.target.value)})}
+                    value={formData.cost_price}
+                    onChange={e => setFormData({...formData, cost_price: parseFloat(e.target.value)})}
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700"
                   />
                 </div>

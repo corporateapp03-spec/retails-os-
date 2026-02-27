@@ -8,7 +8,7 @@ export interface InventoryItem {
   id: string;
   name: string;
   code: string;
-  cost: number;
+  cost_price: number;
   selling_price: number;
   category_id: number;
   min_stock: number;

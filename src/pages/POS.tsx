@@ -12,7 +12,7 @@ export default function POS() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (searchTerm.length > 1) {
+    if (searchTerm.length > 0) {
       searchItems();
     } else {
       setSearchResults([]);
@@ -21,12 +21,11 @@ export default function POS() {
 
   async function searchItems() {
     try {
-      // Fetch items first
+      // Fetch items first - searching by name OR code
       const { data: items, error: itemsError } = await supabase
         .from('inventory')
         .select('*')
-        .ilike('name', `%${searchTerm}%`)
-        .eq('status', 'in_stock')
+        .or(`name.ilike.%${searchTerm}%,code.ilike.%${searchTerm}%`)
         .limit(5);
       
       if (itemsError) throw itemsError;
