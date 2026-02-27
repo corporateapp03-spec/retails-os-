@@ -19,10 +19,13 @@ export interface InventoryItem {
 export interface LedgerEntry {
   id: string;
   category_id: string;
+  inventory_item_id?: string;
+  quantity?: number;
   amount: number;
   transaction_type: 'sale' | 'expense' | 'capital_deduction';
   fund_source: string;
   created_at: string;
+  inventory?: InventoryItem;
 }
 
 export interface BusinessSummary {

@@ -76,7 +76,8 @@ export default function Inventory() {
     try {
       const { data, error: fetchError } = await supabase
         .from('inventory')
-        .select('*');
+        .select('*')
+        .order('name', { ascending: true });
 
       if (fetchError) throw fetchError;
       setItems(data || []);
@@ -88,7 +89,8 @@ export default function Inventory() {
     }
   }
 
-  const totalAssetValue = items.reduce((acc, item) => acc + (item?.cost_price || 0), 0);
+  // Pure Reader Logic: Totals are derived from the absolute source of truth (the items array)
+  const totalAssetValue = items.reduce((acc, item) => acc + ((item?.cost_price || 0) * (item?.quantity || 0)), 0);
 
   const filteredItems = items.filter(item => 
     (item?.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
@@ -160,7 +162,7 @@ export default function Inventory() {
               <span className="text-blue-400 text-xl">$</span>
               {totalAssetValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h2>
-            <p className="text-[10px] text-slate-500 mt-2 font-mono">SUM(inventory.cost_price)</p>
+            <p className="text-[10px] text-slate-500 mt-2 font-mono">SUM(cost_price * quantity)</p>
           </div>
           <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-blue-400">
             <DollarSign size={24} />

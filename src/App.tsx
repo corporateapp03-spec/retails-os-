@@ -3,7 +3,7 @@ import {
   LayoutDashboard, 
   Package,
   ShoppingCart, 
-  ArrowUpRight, 
+  History,
   Menu, 
   X,
   Search
@@ -12,9 +12,9 @@ import { cn } from './lib/utils';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import POS from './pages/POS';
-import Outflows from './pages/Outflows';
+import Sales from './pages/Sales';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'outflows';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'sales';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -24,7 +24,7 @@ export default function App() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'inventory', label: 'Inventory', icon: Package },
     { id: 'pos', label: 'POS', icon: ShoppingCart },
-    { id: 'outflows', label: 'Outflows', icon: ArrowUpRight },
+    { id: 'sales', label: 'Sales Archive', icon: History },
   ];
 
   return (
@@ -105,7 +105,7 @@ export default function App() {
           {activePage === 'dashboard' && <Dashboard />}
           {activePage === 'inventory' && <Inventory />}
           {activePage === 'pos' && <POS />}
-          {activePage === 'outflows' && <Outflows />}
+          {activePage === 'sales' && <Sales />}
         </div>
       </main>
     </div>

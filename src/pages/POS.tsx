@@ -81,27 +81,41 @@ export default function POS() {
     setIsProcessing(true);
     
     try {
-      // In a real app, we might use an RPC or a transaction
-      // For this UI demo, we'll insert into ledger for each item
-      // The DB triggers will handle inventory updates and math
+      // 1. Prepare ledger entries
       const entries = cart.map(c => ({
         category_id: c.item.category_id,
+        inventory_item_id: c.item.id,
+        quantity: c.quantity,
         amount: c.item.selling_price * c.quantity,
         transaction_type: 'sale',
         fund_source: 'POS Terminal'
       }));
 
-      const { error } = await supabase
+      // 2. Insert into ledger
+      const { error: ledgerError } = await supabase
         .from('ledger')
         .insert(entries);
 
-      if (error) throw error;
+      if (ledgerError) throw ledgerError;
+
+      // 3. Update inventory stock levels (Decrement)
+      // In a real production environment, this should be done via a DB function/trigger
+      // to ensure atomicity, but we'll perform it here as requested.
+      for (const cartItem of cart) {
+        const newQuantity = (cartItem.item.quantity || 0) - cartItem.quantity;
+        const { error: invError } = await supabase
+          .from('inventory')
+          .update({ quantity: newQuantity })
+          .eq('id', cartItem.item.id);
+        
+        if (invError) throw invError;
+      }
 
       setSuccess(true);
       setCart([]);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
-      alert('Error finalizing sale: ' + (err as Error).message);
+      alert('Database Execution Error: ' + (err as Error).message);
     } finally {
       setIsProcessing(false);
     }
