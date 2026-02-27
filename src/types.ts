@@ -11,6 +11,7 @@ export interface InventoryItem {
   cost: number;
   selling_price: number;
   category_id: string;
+  quantity?: number;
   status: 'in_stock' | 'out_of_stock' | 'discontinued';
   categories?: Category;
 }
