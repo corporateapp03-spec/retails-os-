@@ -8,12 +8,14 @@ export interface InventoryItem {
   id: string;
   name: string;
   code: string;
+  category: string;
   cost_price: number;
   selling_price: number;
+  quantity: number;
+  min_stock_level: number;
+  created_at: string;
+  active: boolean;
   category_id: number;
-  min_stock: number;
-  max_stock: number;
-  quantity?: number;
 }
 
 export interface LedgerEntry {

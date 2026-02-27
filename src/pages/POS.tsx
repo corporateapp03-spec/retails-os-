@@ -29,31 +29,7 @@ export default function POS() {
         .limit(5);
       
       if (itemsError) throw itemsError;
-      if (!items || items.length === 0) {
-        setSearchResults([]);
-        return;
-      }
-
-      // Fetch relevant categories for these items
-      const categoryIds = [...new Set(items.map(i => i.category_id))];
-      const { data: cats, error: catsError } = await supabase
-        .from('categories')
-        .select('*')
-        .in('id', categoryIds);
-
-      if (catsError) throw catsError;
-
-      const categoriesMap = (cats || []).reduce((acc, cat) => {
-        acc[cat.id] = cat;
-        return acc;
-      }, {} as Record<string, any>);
-
-      const joinedResults = items.map(item => ({
-        ...item,
-        categories: categoriesMap[item.category_id]
-      }));
-
-      setSearchResults(joinedResults);
+      setSearchResults(items || []);
     } catch (err) {
       console.error('Error searching items:', err);
     }
@@ -153,7 +129,7 @@ export default function POS() {
                       </div>
                       <div>
                         <p className="font-medium text-slate-900">{item.name}</p>
-                        <p className="text-xs text-slate-500">{item.code} • {item.categories?.name}</p>
+                        <p className="text-xs text-slate-500">{item.code} • {item.category}</p>
                       </div>
                     </div>
                     <span className="font-bold text-blue-600">${(item.selling_price ?? 0).toLocaleString()}</span>

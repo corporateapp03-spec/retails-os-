@@ -222,8 +222,11 @@ export default function Sales() {
                         <div className="flex items-center gap-2">
                           <input 
                             type="number" 
-                            value={editAmount}
-                            onChange={(e) => setEditAmount(parseFloat(e.target.value))}
+                            value={editAmount || 0}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setEditAmount(isNaN(val) ? 0 : val);
+                            }}
                             className="w-24 px-2 py-1 border border-blue-500 rounded text-sm outline-none"
                             autoFocus
                           />

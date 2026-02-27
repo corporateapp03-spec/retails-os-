@@ -34,11 +34,13 @@ export default function Inventory() {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
+    category: 'Parts',
     cost_price: 0,
     selling_price: 0,
     category_id: 1,
-    min_stock: 0,
-    max_stock: 0
+    min_stock_level: 5,
+    quantity: 0,
+    active: true
   });
 
   useEffect(() => {
@@ -50,22 +52,26 @@ export default function Inventory() {
       setFormData({
         name: editingItem?.name || '',
         code: editingItem?.code || '',
+        category: editingItem?.category || 'Parts',
         cost_price: editingItem?.cost_price || 0,
         selling_price: editingItem?.selling_price || 0,
         category_id: editingItem?.category_id || 1,
-        min_stock: editingItem?.min_stock || 0,
-        max_stock: editingItem?.max_stock || 0
+        min_stock_level: editingItem?.min_stock_level || 5,
+        quantity: editingItem?.quantity || 0,
+        active: editingItem?.active ?? true
       });
       setIsModalOpen(true);
     } else {
       setFormData({
         name: '',
         code: '',
+        category: 'Parts',
         cost_price: 0,
         selling_price: 0,
         category_id: 1,
-        min_stock: 0,
-        max_stock: 0
+        min_stock_level: 5,
+        quantity: 0,
+        active: true
       });
     }
   }, [editingItem]);
@@ -240,7 +246,7 @@ export default function Inventory() {
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Price</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock (Min/Max)</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock (Min Level)</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
               </tr>
             </thead>
@@ -286,7 +292,7 @@ export default function Inventory() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-slate-900">{item?.quantity ?? 0}</span>
                         <span className="text-[10px] text-slate-400">
-                          ({item?.min_stock ?? 0} / {item?.max_stock ?? 0})
+                          (Min: {item?.min_stock_level ?? 5})
                         </span>
                       </div>
                     </td>
@@ -376,8 +382,11 @@ export default function Inventory() {
                     required
                     type="number" 
                     step="0.01"
-                    value={formData.cost_price}
-                    onChange={e => setFormData({...formData, cost_price: parseFloat(e.target.value)})}
+                    value={formData.cost_price || 0}
+                    onChange={e => {
+                      const val = parseFloat(e.target.value);
+                      setFormData({...formData, cost_price: isNaN(val) ? 0 : val});
+                    }}
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700"
                   />
                 </div>
@@ -387,8 +396,11 @@ export default function Inventory() {
                     required
                     type="number" 
                     step="0.01"
-                    value={formData.selling_price}
-                    onChange={e => setFormData({...formData, selling_price: parseFloat(e.target.value)})}
+                    value={formData.selling_price || 0}
+                    onChange={e => {
+                      const val = parseFloat(e.target.value);
+                      setFormData({...formData, selling_price: isNaN(val) ? 0 : val});
+                    }}
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-600"
                   />
                 </div>
@@ -399,37 +411,63 @@ export default function Inventory() {
                 <select 
                   required
                   value={formData.category_id}
-                  onChange={e => setFormData({...formData, category_id: parseInt(e.target.value)})}
+                  onChange={e => {
+                    const id = parseInt(e.target.value);
+                    setFormData({
+                      ...formData, 
+                      category_id: id,
+                      category: CATEGORY_MAP[id] || 'Other'
+                    });
+                  }}
                   className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white font-bold text-slate-700"
                 >
                   <option value={1}>1 - Parts</option>
                   <option value={2}>2 - Oils</option>
                   <option value={3}>3 - Electrical</option>
                 </select>
-                <p className="text-[10px] text-slate-400 italic">Maps to Integer ID in categories table.</p>
+                <p className="text-[10px] text-slate-400 italic">Maps to Integer ID and Text Category in table.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min Stock</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantity</label>
                   <input 
                     required
                     type="number" 
-                    value={formData.min_stock}
-                    onChange={e => setFormData({...formData, min_stock: parseInt(e.target.value)})}
+                    value={formData.quantity || 0}
+                    onChange={e => {
+                      const val = parseInt(e.target.value);
+                      setFormData({...formData, quantity: isNaN(val) ? 0 : val});
+                    }}
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Max Stock</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min Stock Level</label>
                   <input 
                     required
                     type="number" 
-                    value={formData.max_stock}
-                    onChange={e => setFormData({...formData, max_stock: parseInt(e.target.value)})}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={formData.min_stock_level || 0}
+                    onChange={e => {
+                      const val = parseInt(e.target.value);
+                      setFormData({...formData, min_stock_level: isNaN(val) ? 0 : val});
+                    }}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
+              </div>
+
+              <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <input 
+                  type="checkbox"
+                  id="active-checkbox"
+                  checked={formData.active}
+                  onChange={e => setFormData({...formData, active: e.target.checked})}
+                  className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="active-checkbox" className="text-sm font-bold text-slate-700 cursor-pointer">
+                  Active in Inventory
+                </label>
               </div>
             </form>
 
