@@ -22,7 +22,7 @@ import {
   Legend 
 } from 'recharts';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 export default function Reports() {
   const [loading, setLoading] = useState(true);
@@ -156,13 +156,13 @@ export default function Reports() {
       doc.setTextColor(15, 23, 42);
       doc.text('1. Profit & Loss Statement', 14, 45);
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: 50,
         head: [['Metric', 'Amount']],
         body: [
           ['Total Revenue', `$${analytics.totalRevenue.toLocaleString()}`],
           ['Total Expenses', `$${analytics.totalExpenses.toLocaleString()}`],
-          ['Net Profit (Summary)', `$${analytics.netProfit.toLocaleString()}`],
+          ['Net Profit (Summary Pool)', `$${analytics.netProfit.toLocaleString()}`],
           ['Sales Velocity (30d)', `${analytics.salesVelocity.toFixed(2)} sales/day`],
         ],
         theme: 'striped',
@@ -174,16 +174,19 @@ export default function Reports() {
       doc.setFontSize(16);
       doc.text('2. Distribution Plan', 14, finalY + 15);
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: finalY + 20,
-        head: [['Entity', 'Percentage', 'Projected Amount']],
+        head: [['Entity', 'Percentage', 'Calculated Amount']],
         body: [
           ['Partner A', `${partnerA}%`, `$${((analytics.netProfit * partnerA) / 100).toLocaleString()}`],
           ['Partner B', `${partnerB}%`, `$${((analytics.netProfit * partnerB) / 100).toLocaleString()}`],
           ['Reinvestment', `${reinvestment}%`, `$${((analytics.netProfit * reinvestment) / 100).toLocaleString()}`],
+          ['TOTAL POOL', '100%', `$${analytics.netProfit.toLocaleString()}`],
         ],
         theme: 'grid',
-        headStyles: { fillColor: [15, 23, 42] }
+        headStyles: { fillColor: [15, 23, 42] },
+        foot: [['Total', `${partnerA + partnerB + reinvestment}%`, `$${((analytics.netProfit * (partnerA + partnerB + reinvestment)) / 100).toLocaleString()}`]],
+        footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' }
       });
 
       // Inventory Health
@@ -197,7 +200,7 @@ export default function Reports() {
 
       doc.setFontSize(14);
       doc.text('Fast-Moving Items (Top 5)', 14, finalY2 + 45);
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: finalY2 + 50,
         head: [['Item Name', 'Sales Volume']],
         body: analytics.fastMoving.map(i => [i.name, i.count]),
@@ -337,7 +340,12 @@ export default function Reports() {
           <div className="p-8 flex-1 grid grid-cols-1 md:grid-cols-2 gap-12">
             <div className="space-y-6">
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Partner A Split (%)</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Partner A Split (%)</label>
+                  <span className="text-xs font-bold text-emerald-600">
+                    ${((analytics.netProfit * partnerA) / 100).toLocaleString()}
+                  </span>
+                </div>
                 <div className="relative">
                   <input 
                     type="number" 
@@ -350,7 +358,12 @@ export default function Reports() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Partner B Split (%)</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Partner B Split (%)</label>
+                  <span className="text-xs font-bold text-blue-600">
+                    ${((analytics.netProfit * partnerB) / 100).toLocaleString()}
+                  </span>
+                </div>
                 <div className="relative">
                   <input 
                     type="number" 
@@ -363,7 +376,12 @@ export default function Reports() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Reinvestment (%)</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Reinvestment (%)</label>
+                  <span className="text-xs font-bold text-amber-600">
+                    ${((analytics.netProfit * reinvestment) / 100).toLocaleString()}
+                  </span>
+                </div>
                 <div className="relative">
                   <input 
                     type="number" 
