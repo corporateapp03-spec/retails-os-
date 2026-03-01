@@ -91,7 +91,7 @@ export default function POS() {
     
     try {
       const now = new Date();
-      const timeString = now.toTimeString().split(' ')[0]; // Format: HH:MM:SS (no timezone)
+      const timestamp = now.toISOString();
 
       // 1. Prepare ledger entries
       const entries = cart.map(c => ({
@@ -102,7 +102,7 @@ export default function POS() {
         transaction_type: 'sale' as const,
         fund_source: paymentMethod,
         description: `Sale: ${c.item.name} (x${c.quantity})`,
-        created_at: timeString
+        created_at: timestamp
       }));
 
       // 2. Insert into ledger
