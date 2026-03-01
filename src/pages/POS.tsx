@@ -91,7 +91,7 @@ export default function POS() {
     
     try {
       const now = new Date();
-      const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+      const timeString = now.toTimeString().split(' ')[0]; // Format: HH:MM:SS (no timezone)
 
       // 1. Prepare ledger entries
       const entries = cart.map(c => ({
