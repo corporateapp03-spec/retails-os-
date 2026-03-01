@@ -6,15 +6,17 @@ import {
   History,
   Menu, 
   X,
-  Search
+  Search,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import POS from './pages/POS';
 import Sales from './pages/Sales';
+import Outflow from './pages/Outflow';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'sales';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -25,6 +27,7 @@ export default function App() {
     { id: 'inventory', label: 'Inventory', icon: Package },
     { id: 'pos', label: 'POS', icon: ShoppingCart },
     { id: 'sales', label: 'Sales Archive', icon: History },
+    { id: 'outflow', label: 'Outflow Guardian', icon: ShieldCheck },
   ];
 
   return (
@@ -106,6 +109,7 @@ export default function App() {
           {activePage === 'inventory' && <Inventory />}
           {activePage === 'pos' && <POS />}
           {activePage === 'sales' && <Sales />}
+          {activePage === 'outflow' && <Outflow />}
         </div>
       </main>
     </div>

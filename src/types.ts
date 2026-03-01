@@ -24,8 +24,9 @@ export interface LedgerEntry {
   inventory_item_id?: string;
   quantity?: number;
   amount: number;
-  transaction_type: 'sale' | 'expense' | 'capital_deduction';
+  transaction_type: 'sale' | 'expense' | 'capital_withdrawal' | 'CAPITAL_WITHDRAWAL' | 'capital_deduction';
   fund_source: string;
+  description?: string;
   created_at: string;
   inventory?: InventoryItem;
 }
@@ -36,5 +37,6 @@ export interface BusinessSummary {
   total_revenue: number;
   total_profit: number;
   total_expenses: number;
-  capital_health?: number; // Terminology from prompt
+  capital_health?: number;
+  available_profit?: number; // New field for clarity
 }

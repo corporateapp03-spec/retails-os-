@@ -81,7 +81,7 @@ export default function Dashboard() {
             
             <div className="space-y-4 mt-6">
               <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500">Realized Profit</span>
+                <span className="text-slate-500">Available Profit</span>
                 <span className="font-semibold text-emerald-600">+${summary.total_profit?.toLocaleString() || '0'}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
@@ -129,10 +129,8 @@ SELECT
     COALESCE(SUM(CASE WHEN l.transaction_type = 'sale' THEN l.amount ELSE 0 END) - 
              SUM(CASE WHEN l.transaction_type = 'expense' THEN l.amount ELSE 0 END), 0) as total_profit,
     COALESCE(SUM(CASE WHEN l.transaction_type = 'expense' THEN l.amount ELSE 0 END), 0) as total_expenses,
-    c.initial_capital + 
-    COALESCE(SUM(CASE WHEN l.transaction_type = 'sale' THEN l.amount ELSE 0 END), 0) - 
-    COALESCE(SUM(CASE WHEN l.transaction_type = 'expense' THEN l.amount ELSE 0 END), 0) -
-    COALESCE(SUM(CASE WHEN l.transaction_type = 'capital_deduction' THEN l.amount ELSE 0 END), 0) as capital_health
+    c.initial_capital - 
+    COALESCE(SUM(CASE WHEN l.transaction_type IN ('capital_withdrawal', 'CAPITAL_WITHDRAWAL', 'capital_deduction') THEN l.amount ELSE 0 END), 0) as capital_health
 FROM categories c
 LEFT JOIN ledger l ON c.id = l.category_id
 GROUP BY c.id, c.name, c.initial_capital;

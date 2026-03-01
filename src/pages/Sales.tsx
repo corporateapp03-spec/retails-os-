@@ -44,21 +44,26 @@ export default function Sales() {
 
       if (ledgerData && ledgerData.length > 0) {
         const itemIds = [...new Set(ledgerData.map(s => s.inventory_item_id).filter(Boolean))];
-        const { data: inventoryData, error: inventoryError } = await supabase
-          .from('inventory')
-          .select('*')
-          .in('id', itemIds);
+        
+        let inventoryMap: Record<string, any> = {};
+        
+        if (itemIds.length > 0) {
+          const { data: inventoryData, error: inventoryError } = await supabase
+            .from('inventory')
+            .select('*')
+            .in('id', itemIds);
 
-        if (inventoryError) throw inventoryError;
-
-        const inventoryMap = (inventoryData || []).reduce((acc, item) => {
-          acc[item.id] = item;
-          return acc;
-        }, {} as Record<string, any>);
+          if (!inventoryError && inventoryData) {
+            inventoryMap = inventoryData.reduce((acc, item) => {
+              acc[item.id] = item;
+              return acc;
+            }, {} as Record<string, any>);
+          }
+        }
 
         const joinedData = ledgerData.map(sale => ({
           ...sale,
-          inventory: inventoryMap[sale.inventory_item_id]
+          inventory: sale.inventory_item_id ? inventoryMap[sale.inventory_item_id] : null
         }));
 
         setSales(joinedData);
@@ -231,7 +236,7 @@ export default function Sales() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <Package size={14} className="text-blue-400" />
-                        <span className="font-bold text-slate-900">{sale.inventory?.name || 'Unknown Item'}</span>
+                        <span className="font-bold text-slate-900">{sale.inventory?.name || sale.description || 'Unknown Item'}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">

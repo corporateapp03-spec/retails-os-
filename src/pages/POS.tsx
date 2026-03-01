@@ -97,13 +97,23 @@ export default function POS() {
         quantity: c.quantity,
         amount: c.item.selling_price * c.quantity,
         transaction_type: 'sale',
-        fund_source: paymentMethod
+        fund_source: paymentMethod,
+        description: `Sale: ${c.item.name} (x${c.quantity})`
       }));
 
       // 2. Insert into ledger
-      const { error: ledgerError } = await supabase
+      let { error: ledgerError } = await supabase
         .from('ledger')
         .insert(entries);
+
+      // If inventory_item_id is missing from schema, retry without it
+      if (ledgerError && (ledgerError.message.includes('inventory_item_id') || ledgerError.code === 'PGRST204')) {
+        const fallbackEntries = entries.map(({ inventory_item_id, ...rest }) => rest);
+        const { error: retryError } = await supabase
+          .from('ledger')
+          .insert(fallbackEntries);
+        ledgerError = retryError;
+      }
 
       if (ledgerError) throw ledgerError;
 
