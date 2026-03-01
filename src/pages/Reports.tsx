@@ -31,7 +31,7 @@ export default function Reports() {
   const [summaries, setSummaries] = useState<BusinessSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Projection Sliders
+  // Projection Manual Inputs
   const [partnerA, setPartnerA] = useState(40);
   const [partnerB, setPartnerB] = useState(40);
   const [reinvestment, setReinvestment] = useState(20);
@@ -70,13 +70,21 @@ export default function Reports() {
 
     const totalRevenue = summaries.reduce((acc, s) => acc + (s.total_revenue || 0), 0);
     const totalExpenses = summaries.reduce((acc, s) => acc + (s.total_expenses || 0), 0);
-    const netProfit = totalRevenue - totalExpenses;
+    const netProfit = summaries.reduce((acc, s) => acc + (s.total_profit || 0), 0);
 
     const assetValuation = inventory.reduce((acc, item) => acc + (item.cost_price * item.quantity), 0);
-    const cashOnHand = summaries.reduce((acc, s) => acc + (s.total_profit || 0), 0); // Profit is available cash
+    const cashOnHand = netProfit; // Use total profit as available cash
 
     // Inventory Velocity
     const salesEntries = ledger.filter(l => l.transaction_type === 'sale');
+    
+    // Calculate Velocity (Sales per day over last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const recentSales = salesEntries.filter(l => new Date(l.created_at) > thirtyDaysAgo);
+    const salesVelocity = recentSales.length / 30;
+
     const itemSalesCount: Record<string, number> = {};
     salesEntries.forEach(s => {
       if (s.inventory_item_id) {
@@ -92,9 +100,6 @@ export default function Reports() {
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const deadStock = inventory.filter(item => {
       const hasRecentSales = ledger.some(l => 
@@ -117,31 +122,10 @@ export default function Reports() {
       fastMoving,
       deadStock,
       deadStockValue,
-      deadStockRatio
+      deadStockRatio,
+      salesVelocity
     };
   }, [summaries, inventory, ledger]);
-
-  const handleSliderChange = (type: 'A' | 'B' | 'R', value: number) => {
-    if (type === 'A') {
-      const remaining = 100 - value;
-      const ratio = partnerB + reinvestment === 0 ? 0.5 : partnerB / (partnerB + reinvestment);
-      setPartnerA(value);
-      setPartnerB(Math.round(remaining * ratio));
-      setReinvestment(100 - value - Math.round(remaining * ratio));
-    } else if (type === 'B') {
-      const remaining = 100 - value;
-      const ratio = partnerA + reinvestment === 0 ? 0.5 : partnerA / (partnerA + reinvestment);
-      setPartnerB(value);
-      setPartnerA(Math.round(remaining * ratio));
-      setReinvestment(100 - value - Math.round(remaining * ratio));
-    } else {
-      const remaining = 100 - value;
-      const ratio = partnerA + partnerB === 0 ? 0.5 : partnerA / (partnerA + partnerB);
-      setReinvestment(value);
-      setPartnerA(Math.round(remaining * ratio));
-      setPartnerB(100 - value - Math.round(remaining * ratio));
-    }
-  };
 
   const distributionData = useMemo(() => {
     if (!analytics) return [];
@@ -155,71 +139,76 @@ export default function Reports() {
   const generatePDF = () => {
     if (!analytics) return;
 
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
+    try {
+      const doc = new jsPDF();
+      
+      // Header
+      doc.setFontSize(22);
+      doc.setTextColor(15, 23, 42); 
+      doc.text('Executive Business Report', 14, 22);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
 
-    // Header
-    doc.setFontSize(22);
-    doc.setTextColor(15, 23, 42); // slate-900
-    doc.text('Executive Business Report', 14, 22);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+      // P&L Section
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text('1. Profit & Loss Statement', 14, 45);
+      
+      (doc as any).autoTable({
+        startY: 50,
+        head: [['Metric', 'Amount']],
+        body: [
+          ['Total Revenue', `$${analytics.totalRevenue.toLocaleString()}`],
+          ['Total Expenses', `$${analytics.totalExpenses.toLocaleString()}`],
+          ['Net Profit (Summary)', `$${analytics.netProfit.toLocaleString()}`],
+          ['Sales Velocity (30d)', `${analytics.salesVelocity.toFixed(2)} sales/day`],
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [15, 23, 42] }
+      });
 
-    // P&L Section
-    doc.setFontSize(16);
-    doc.setTextColor(15, 23, 42);
-    doc.text('1. Profit & Loss Statement', 14, 45);
-    
-    (doc as any).autoTable({
-      startY: 50,
-      head: [['Metric', 'Amount']],
-      body: [
-        ['Total Revenue', `$${analytics.totalRevenue.toLocaleString()}`],
-        ['Total Expenses', `$${analytics.totalExpenses.toLocaleString()}`],
-        ['Net Profit', `$${analytics.netProfit.toLocaleString()}`],
-      ],
-      theme: 'striped',
-      headStyles: { fillColor: [15, 23, 42] }
-    });
+      // Distribution Section
+      const finalY = (doc as any).lastAutoTable.finalY;
+      doc.setFontSize(16);
+      doc.text('2. Distribution Plan', 14, finalY + 15);
+      
+      (doc as any).autoTable({
+        startY: finalY + 20,
+        head: [['Entity', 'Percentage', 'Projected Amount']],
+        body: [
+          ['Partner A', `${partnerA}%`, `$${((analytics.netProfit * partnerA) / 100).toLocaleString()}`],
+          ['Partner B', `${partnerB}%`, `$${((analytics.netProfit * partnerB) / 100).toLocaleString()}`],
+          ['Reinvestment', `${reinvestment}%`, `$${((analytics.netProfit * reinvestment) / 100).toLocaleString()}`],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [15, 23, 42] }
+      });
 
-    // Distribution Section
-    const finalY = (doc as any).lastAutoTable.finalY;
-    doc.setFontSize(16);
-    doc.text('2. Distribution Plan', 14, finalY + 15);
-    
-    (doc as any).autoTable({
-      startY: finalY + 20,
-      head: [['Entity', 'Percentage', 'Projected Amount']],
-      body: [
-        ['Partner A', `${partnerA}%`, `$${((analytics.netProfit * partnerA) / 100).toLocaleString()}`],
-        ['Partner B', `${partnerB}%`, `$${((analytics.netProfit * partnerB) / 100).toLocaleString()}`],
-        ['Reinvestment', `${reinvestment}%`, `$${((analytics.netProfit * reinvestment) / 100).toLocaleString()}`],
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [15, 23, 42] }
-    });
+      // Inventory Health
+      const finalY2 = (doc as any).lastAutoTable.finalY;
+      doc.setFontSize(16);
+      doc.text('3. Inventory Health & Velocity', 14, finalY2 + 15);
+      
+      doc.setFontSize(12);
+      doc.text(`Total Asset Valuation: $${analytics.assetValuation.toLocaleString()}`, 14, finalY2 + 25);
+      doc.text(`Dead Stock Value: $${analytics.deadStockValue.toLocaleString()} (${(analytics.deadStockRatio * 100).toFixed(1)}%)`, 14, finalY2 + 32);
 
-    // Inventory Health
-    const finalY2 = (doc as any).lastAutoTable.finalY;
-    doc.setFontSize(16);
-    doc.text('3. Inventory Health', 14, finalY2 + 15);
-    
-    doc.setFontSize(12);
-    doc.text(`Total Asset Valuation: $${analytics.assetValuation.toLocaleString()}`, 14, finalY2 + 25);
-    doc.text(`Dead Stock Value: $${analytics.deadStockValue.toLocaleString()} (${(analytics.deadStockRatio * 100).toFixed(1)}%)`, 14, finalY2 + 32);
+      doc.setFontSize(14);
+      doc.text('Fast-Moving Items (Top 5)', 14, finalY2 + 45);
+      (doc as any).autoTable({
+        startY: finalY2 + 50,
+        head: [['Item Name', 'Sales Volume']],
+        body: analytics.fastMoving.map(i => [i.name, i.count]),
+        theme: 'plain'
+      });
 
-    doc.setFontSize(14);
-    doc.text('Fast-Moving Items (Top 5)', 14, finalY2 + 45);
-    (doc as any).autoTable({
-      startY: finalY2 + 50,
-      head: [['Item Name', 'Sales Volume']],
-      body: analytics.fastMoving.map(i => [i.name, i.count]),
-      theme: 'plain'
-    });
-
-    doc.save(`Executive_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`Executive_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
+      alert('Failed to generate PDF. Check console for details.');
+    }
   };
 
   if (loading) {
@@ -241,6 +230,8 @@ export default function Reports() {
       </div>
     );
   }
+
+  const totalPercentage = partnerA + partnerB + reinvestment;
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-8">
@@ -270,7 +261,7 @@ export default function Reports() {
               P&L
             </span>
           </div>
-          <p className="text-slate-500 text-sm font-medium">Net Profit</p>
+          <p className="text-slate-500 text-sm font-medium">Net Profit (Summary)</p>
           <h3 className="text-2xl font-bold text-slate-900 mt-1">
             ${analytics.netProfit.toLocaleString()}
           </h3>
@@ -279,15 +270,15 @@ export default function Reports() {
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-              <DollarSign size={24} />
+              <BarChart3 size={24} />
             </div>
             <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-              Liquidity
+              Velocity
             </span>
           </div>
-          <p className="text-slate-500 text-sm font-medium">Cash on Hand</p>
+          <p className="text-slate-500 text-sm font-medium">Sales Velocity</p>
           <h3 className="text-2xl font-bold text-slate-900 mt-1">
-            ${analytics.cashOnHand.toLocaleString()}
+            {analytics.salesVelocity.toFixed(2)} <span className="text-sm font-normal text-slate-400">/day</span>
           </h3>
         </div>
 
@@ -336,55 +327,74 @@ export default function Reports() {
               <PieChartIcon className="text-slate-400" size={20} />
               <h2 className="font-bold text-slate-900">Projection & Distribution Tool</h2>
             </div>
+            {totalPercentage !== 100 && (
+              <span className="text-xs font-bold text-red-500 flex items-center gap-1">
+                <AlertTriangle size={12} />
+                Total must be 100% (Current: {totalPercentage}%)
+              </span>
+            )}
           </div>
           <div className="p-8 flex-1 grid grid-cols-1 md:grid-cols-2 gap-12">
-            <div className="space-y-8">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-slate-700">Partner A Split</label>
-                  <span className="text-sm font-bold text-emerald-600">{partnerA}%</span>
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Partner A Split (%)</label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    value={partnerA}
+                    onChange={(e) => setPartnerA(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</div>
                 </div>
-                <input 
-                  type="range" 
-                  min="0" max="100" 
-                  value={partnerA}
-                  onChange={(e) => handleSliderChange('A', parseInt(e.target.value))}
-                  className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                />
               </div>
 
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-slate-700">Partner B Split</label>
-                  <span className="text-sm font-bold text-blue-600">{partnerB}%</span>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Partner B Split (%)</label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    value={partnerB}
+                    onChange={(e) => setPartnerB(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</div>
                 </div>
-                <input 
-                  type="range" 
-                  min="0" max="100" 
-                  value={partnerB}
-                  onChange={(e) => handleSliderChange('B', parseInt(e.target.value))}
-                  className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                />
               </div>
 
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-slate-700">Reinvestment</label>
-                  <span className="text-sm font-bold text-amber-600">{reinvestment}%</span>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Reinvestment (%)</label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    value={reinvestment}
+                    onChange={(e) => setReinvestment(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</div>
                 </div>
-                <input 
-                  type="range" 
-                  min="0" max="100" 
-                  value={reinvestment}
-                  onChange={(e) => handleSliderChange('R', parseInt(e.target.value))}
-                  className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                />
               </div>
 
               <div className="pt-4 border-t border-slate-50">
-                <div className="flex items-center gap-2 text-xs text-slate-400 uppercase tracking-wider font-bold">
-                  <CheckCircle2 size={14} className="text-emerald-500" />
-                  Total Distribution: 100%
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-slate-400 uppercase tracking-wider font-bold">
+                    {totalPercentage === 100 ? (
+                      <CheckCircle2 size={14} className="text-emerald-500" />
+                    ) : (
+                      <AlertTriangle size={14} className="text-red-500" />
+                    )}
+                    Total: {totalPercentage}%
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setPartnerA(40);
+                      setPartnerB(40);
+                      setReinvestment(20);
+                    }}
+                    className="text-[10px] font-bold text-slate-400 hover:text-slate-900 uppercase tracking-widest"
+                  >
+                    Reset to Default
+                  </button>
                 </div>
               </div>
             </div>
@@ -413,7 +423,7 @@ export default function Reports() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="text-center mt-4">
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Future Slice</p>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Profit Pool</p>
                 <p className="text-xl font-bold text-slate-900">${analytics.netProfit.toLocaleString()}</p>
               </div>
             </div>
