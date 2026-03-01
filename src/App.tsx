@@ -7,7 +7,8 @@ import {
   Menu, 
   X,
   Search,
-  ShieldCheck
+  ShieldCheck,
+  BarChart3
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import Dashboard from './pages/Dashboard';
@@ -15,8 +16,9 @@ import Inventory from './pages/Inventory';
 import POS from './pages/POS';
 import Sales from './pages/Sales';
 import Outflow from './pages/Outflow';
+import Reports from './pages/Reports';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -28,6 +30,7 @@ export default function App() {
     { id: 'pos', label: 'POS', icon: ShoppingCart },
     { id: 'sales', label: 'Sales Archive', icon: History },
     { id: 'outflow', label: 'Outflow Guardian', icon: ShieldCheck },
+    { id: 'reports', label: 'Executive Intel', icon: BarChart3 },
   ];
 
   return (
@@ -110,6 +113,7 @@ export default function App() {
           {activePage === 'pos' && <POS />}
           {activePage === 'sales' && <Sales />}
           {activePage === 'outflow' && <Outflow />}
+          {activePage === 'reports' && <Reports />}
         </div>
       </main>
     </div>
