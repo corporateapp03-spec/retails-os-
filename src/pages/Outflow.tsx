@@ -111,7 +111,8 @@ export default function Outflow() {
           amount: amount,
           transaction_type: type,
           fund_source: fundSource,
-          description: description.trim()
+          description: description.trim(),
+          created_at: new Date().toISOString()
         }]);
 
       if (insertError) throw insertError;

@@ -96,9 +96,10 @@ export default function POS() {
         inventory_item_id: c.item.id,
         quantity: c.quantity,
         amount: c.item.selling_price * c.quantity,
-        transaction_type: 'sale',
+        transaction_type: 'sale' as const,
         fund_source: paymentMethod,
-        description: `Sale: ${c.item.name} (x${c.quantity})`
+        description: `Sale: ${c.item.name} (x${c.quantity})`,
+        created_at: new Date().toISOString()
       }));
 
       // 2. Insert into ledger

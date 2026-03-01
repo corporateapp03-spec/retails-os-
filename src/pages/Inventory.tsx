@@ -122,7 +122,7 @@ export default function Inventory() {
       } else {
         const { error: insertError } = await supabase
           .from('inventory')
-          .insert([formData]);
+          .insert([{ ...formData, created_at: new Date().toISOString() }]);
         
         if (insertError) throw insertError;
       }
