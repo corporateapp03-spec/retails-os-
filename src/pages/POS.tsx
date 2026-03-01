@@ -90,6 +90,9 @@ export default function POS() {
     setIsProcessing(true);
     
     try {
+      const now = new Date();
+      const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
       // 1. Prepare ledger entries
       const entries = cart.map(c => ({
         category_id: c.item.category_id,
@@ -99,7 +102,7 @@ export default function POS() {
         transaction_type: 'sale' as const,
         fund_source: paymentMethod,
         description: `Sale: ${c.item.name} (x${c.quantity})`,
-        created_at: new Date().toISOString()
+        created_at: timeString
       }));
 
       // 2. Insert into ledger
@@ -118,17 +121,20 @@ export default function POS() {
 
       if (ledgerError) throw ledgerError;
 
-      // 3. Update inventory stock levels (Decrement)
+      // 3. Optimized Inventory Update: Fetch all at once
+      const itemIds = cart.map(c => c.item.id);
+      const { data: latestItems, error: fetchError } = await supabase
+        .from('inventory')
+        .select('id, quantity')
+        .in('id', itemIds);
+
+      if (fetchError) throw fetchError;
+
+      // Update each item
       for (const cartItem of cart) {
-        const { data: latestItem, error: fetchError } = await supabase
-          .from('inventory')
-          .select('quantity')
-          .eq('id', cartItem.item.id)
-          .single();
-
-        if (fetchError) throw fetchError;
-
-        const currentStock = latestItem?.quantity || 0;
+        const latest = latestItems?.find(i => i.id === cartItem.item.id);
+        const currentStock = latest?.quantity || 0;
+        
         if (currentStock < cartItem.quantity) {
           throw new Error(`Stock mismatch for ${cartItem.item.name}. Available: ${currentStock}`);
         }

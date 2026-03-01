@@ -120,9 +120,12 @@ export default function Inventory() {
         
         if (updateError) throw updateError;
       } else {
+        const now = new Date();
+        const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+        
         const { error: insertError } = await supabase
           .from('inventory')
-          .insert([{ ...formData, created_at: new Date().toISOString() }]);
+          .insert([{ ...formData, created_at: timeString }]);
         
         if (insertError) throw insertError;
       }
