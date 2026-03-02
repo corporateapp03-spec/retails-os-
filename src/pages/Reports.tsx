@@ -99,7 +99,7 @@ export default function Reports() {
         name: inventory.find(i => i.id === id)?.name || 'Unknown'
       }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
+      .slice(0, 15);
 
     const deadStock = inventory.filter(item => {
       const hasRecentSales = ledger.some(l => 
@@ -108,7 +108,9 @@ export default function Reports() {
         new Date(l.created_at) > thirtyDaysAgo
       );
       return !hasRecentSales;
-    });
+    })
+    .sort((a, b) => (b.cost_price * b.quantity) - (a.cost_price * a.quantity))
+    .slice(0, 15);
 
     const deadStockValue = deadStock.reduce((acc, item) => acc + (item.cost_price * item.quantity), 0);
     const deadStockRatio = assetValuation > 0 ? (deadStockValue / assetValuation) : 0;
@@ -145,69 +147,71 @@ export default function Reports() {
       // Header
       doc.setFontSize(22);
       doc.setTextColor(15, 23, 42); 
-      doc.text('Executive Business Report', 14, 22);
+      doc.text('Executive Financial Position Report', 14, 22);
       
       doc.setFontSize(10);
       doc.setTextColor(100);
       doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
 
-      // P&L Section
+      // Financial Positions Section
       doc.setFontSize(16);
       doc.setTextColor(15, 23, 42);
-      doc.text('1. Profit & Loss Statement', 14, 45);
+      doc.text('1. Financial Positions & Performance', 14, 45);
       
       autoTable(doc, {
         startY: 50,
-        head: [['Metric', 'Amount']],
+        head: [['Financial Metric', 'Value']],
         body: [
           ['Total Revenue', `$${analytics.totalRevenue.toLocaleString()}`],
           ['Total Expenses', `$${analytics.totalExpenses.toLocaleString()}`],
           ['Net Profit (Summary Pool)', `$${analytics.netProfit.toLocaleString()}`],
+          ['Cash on Hand (Liquidity)', `$${analytics.cashOnHand.toLocaleString()}`],
+          ['Total Asset Valuation (Inventory)', `$${analytics.assetValuation.toLocaleString()}`],
           ['Sales Velocity (30d)', `${analytics.salesVelocity.toFixed(2)} sales/day`],
         ],
         theme: 'striped',
         headStyles: { fillColor: [15, 23, 42] }
       });
 
-      // Distribution Section
-      const finalY = (doc as any).lastAutoTable.finalY;
+      // Inventory Velocity - Fast Moving
+      let finalY = (doc as any).lastAutoTable.finalY;
       doc.setFontSize(16);
-      doc.text('2. Distribution Plan', 14, finalY + 15);
+      doc.text('2. Top 15 Fast-Moving Items', 14, finalY + 15);
       
       autoTable(doc, {
         startY: finalY + 20,
-        head: [['Entity', 'Percentage', 'Calculated Amount']],
-        body: [
-          ['Partner A', `${partnerA}%`, `$${((analytics.netProfit * partnerA) / 100).toLocaleString()}`],
-          ['Partner B', `${partnerB}%`, `$${((analytics.netProfit * partnerB) / 100).toLocaleString()}`],
-          ['Reinvestment', `${reinvestment}%`, `$${((analytics.netProfit * reinvestment) / 100).toLocaleString()}`],
-          ['TOTAL POOL', '100%', `$${analytics.netProfit.toLocaleString()}`],
-        ],
+        head: [['Rank', 'Item Name', 'Sales Volume (Total)']],
+        body: analytics.fastMoving.map((i, idx) => [idx + 1, i.name, i.count]),
         theme: 'grid',
-        headStyles: { fillColor: [15, 23, 42] },
-        foot: [['Total', `${partnerA + partnerB + reinvestment}%`, `$${((analytics.netProfit * (partnerA + partnerB + reinvestment)) / 100).toLocaleString()}`]],
-        footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' }
+        headStyles: { fillColor: [16, 185, 129] } // emerald-500
       });
 
-      // Inventory Health
-      const finalY2 = (doc as any).lastAutoTable.finalY;
-      doc.setFontSize(16);
-      doc.text('3. Inventory Health & Velocity', 14, finalY2 + 15);
+      // Inventory Velocity - Dead Stock
+      let finalY2 = (doc as any).lastAutoTable.finalY;
       
-      doc.setFontSize(12);
-      doc.text(`Total Asset Valuation: $${analytics.assetValuation.toLocaleString()}`, 14, finalY2 + 25);
-      doc.text(`Dead Stock Value: $${analytics.deadStockValue.toLocaleString()} (${(analytics.deadStockRatio * 100).toFixed(1)}%)`, 14, finalY2 + 32);
+      // Check if we need a new page
+      if (finalY2 > 220) {
+        doc.addPage();
+        finalY2 = 20;
+      }
 
-      doc.setFontSize(14);
-      doc.text('Fast-Moving Items (Top 5)', 14, finalY2 + 45);
+      doc.setFontSize(16);
+      doc.text('3. Top 15 Dead Stock Items (30 Days Stagnant)', 14, finalY2 + 15);
+      
       autoTable(doc, {
-        startY: finalY2 + 50,
-        head: [['Item Name', 'Sales Volume']],
-        body: analytics.fastMoving.map(i => [i.name, i.count]),
-        theme: 'plain'
+        startY: finalY2 + 20,
+        head: [['Rank', 'Item Name', 'Quantity', 'Value (Cost)']],
+        body: analytics.deadStock.map((i, idx) => [
+          idx + 1, 
+          i.name, 
+          i.quantity, 
+          `$${(i.cost_price * i.quantity).toLocaleString()}`
+        ]),
+        theme: 'grid',
+        headStyles: { fillColor: [239, 68, 68] } // red-500
       });
 
-      doc.save(`Executive_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`Executive_Financial_Report_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) {
       console.error('PDF Generation Error:', err);
       alert('Failed to generate PDF. Check console for details.');
