@@ -173,33 +173,53 @@ export default function Reports() {
         headStyles: { fillColor: [15, 23, 42] }
       });
 
-      // Inventory Velocity - Fast Moving
+      // 2. Distribution Plan
       let finalY = (doc as any).lastAutoTable.finalY;
       doc.setFontSize(16);
-      doc.text('2. Top 15 Fast-Moving Items', 14, finalY + 15);
+      doc.text('2. Distribution Plan', 14, finalY + 15);
       
       autoTable(doc, {
         startY: finalY + 20,
+        head: [['Entity', 'Percentage', 'Calculated Amount']],
+        body: [
+          ['Partner A', `${partnerA}%`, `$${((analytics.netProfit * partnerA) / 100).toLocaleString()}`],
+          ['Partner B', `${partnerB}%`, `$${((analytics.netProfit * partnerB) / 100).toLocaleString()}`],
+          ['Reinvestment', `${reinvestment}%`, `$${((analytics.netProfit * reinvestment) / 100).toLocaleString()}`],
+          ['TOTAL POOL', '100%', `$${analytics.netProfit.toLocaleString()}`],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [15, 23, 42] },
+        foot: [['Total', `${partnerA + partnerB + reinvestment}%`, `$${((analytics.netProfit * (partnerA + partnerB + reinvestment)) / 100).toLocaleString()}`]],
+        footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' }
+      });
+
+      // 3. Inventory Velocity - Fast Moving
+      let finalY2 = (doc as any).lastAutoTable.finalY;
+      doc.setFontSize(16);
+      doc.text('3. Top 15 Fast-Moving Items', 14, finalY2 + 15);
+      
+      autoTable(doc, {
+        startY: finalY2 + 20,
         head: [['Rank', 'Item Name', 'Sales Volume (Total)']],
         body: analytics.fastMoving.map((i, idx) => [idx + 1, i.name, i.count]),
         theme: 'grid',
         headStyles: { fillColor: [16, 185, 129] } // emerald-500
       });
 
-      // Inventory Velocity - Dead Stock
-      let finalY2 = (doc as any).lastAutoTable.finalY;
+      // 4. Inventory Velocity - Dead Stock
+      let finalY3 = (doc as any).lastAutoTable.finalY;
       
       // Check if we need a new page
-      if (finalY2 > 220) {
+      if (finalY3 > 220) {
         doc.addPage();
-        finalY2 = 20;
+        finalY3 = 20;
       }
 
       doc.setFontSize(16);
-      doc.text('3. Top 15 Dead Stock Items (30 Days Stagnant)', 14, finalY2 + 15);
+      doc.text('4. Top 15 Dead Stock Items (30 Days Stagnant)', 14, finalY3 + 15);
       
       autoTable(doc, {
-        startY: finalY2 + 20,
+        startY: finalY3 + 20,
         head: [['Rank', 'Item Name', 'Quantity', 'Value (Cost)']],
         body: analytics.deadStock.map((i, idx) => [
           idx + 1, 
