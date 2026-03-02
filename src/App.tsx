@@ -8,21 +8,58 @@ import {
   X,
   Search,
   ShieldCheck,
-  BarChart3
+  BarChart3,
+  LogOut,
+  User
 } from 'lucide-react';
 import { cn } from './lib/utils';
+import { supabase } from './lib/supabase';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import POS from './pages/POS';
 import Sales from './pages/Sales';
 import Outflow from './pages/Outflow';
 import Reports from './pages/Reports';
+import Login from './pages/Login';
 
 type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Check initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  if (loading) {
+    return (
+      <div className="h-screen w-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Login />;
+  }
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -74,18 +111,28 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-slate-800 space-y-2">
           <div className={cn("flex items-center gap-3 px-3 py-2", !isSidebarOpen && "justify-center")}>
-            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold">
-              AD
+            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
+              <User size={16} />
             </div>
             {isSidebarOpen && (
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Admin User</span>
-                <span className="text-xs text-slate-500">corporate@retailos.com</span>
+              <div className="flex flex-col overflow-hidden">
+                <span className="text-sm font-medium truncate">{session.user.email?.split('@')[0]}</span>
+                <span className="text-[10px] text-slate-500 truncate">{session.user.email}</span>
               </div>
             )}
           </div>
+          <button 
+            onClick={handleLogout}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200",
+              !isSidebarOpen && "justify-center"
+            )}
+          >
+            <LogOut size={20} />
+            {isSidebarOpen && <span className="text-sm font-medium">Logout</span>}
+          </button>
         </div>
       </aside>
 
