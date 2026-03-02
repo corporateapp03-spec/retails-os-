@@ -21,6 +21,7 @@ import Sales from './pages/Sales';
 import Outflow from './pages/Outflow';
 import Reports from './pages/Reports';
 import Login from './pages/Login';
+import ResetPassword from './pages/ResetPassword';
 
 type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports';
 
@@ -29,6 +30,7 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   useEffect(() => {
     // Check initial session
@@ -38,8 +40,11 @@ export default function App() {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsResettingPassword(true);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -55,6 +60,10 @@ export default function App() {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
       </div>
     );
+  }
+
+  if (isResettingPassword) {
+    return <ResetPassword onComplete={() => setIsResettingPassword(false)} />;
   }
 
   if (!session) {
