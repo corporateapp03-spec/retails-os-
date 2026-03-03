@@ -104,9 +104,6 @@ export default function Outflow() {
       }
 
       // 2. Atomic Transaction: Insert into ledger
-      const now = new Date();
-      const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-
       const { error: insertError } = await supabase
         .from('ledger')
         .insert([{
@@ -115,7 +112,7 @@ export default function Outflow() {
           transaction_type: type,
           fund_source: fundSource,
           description: description.trim(),
-          created_at: timeString
+          created_at: new Date().toISOString()
         }]);
 
       if (insertError) throw insertError;
