@@ -9,8 +9,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   BarChart3,
-  ArrowRight
+  ArrowRight,
+  FileText,
+  Calendar
 } from 'lucide-react';
+import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { InventoryItem, LedgerEntry, BusinessSummary } from '../types';
 import { 
@@ -35,6 +38,8 @@ export default function Reports() {
   const [partnerA, setPartnerA] = useState(40);
   const [partnerB, setPartnerB] = useState(40);
   const [reinvestment, setReinvestment] = useState(20);
+  const [reportTimeframe, setReportTimeframe] = useState<'daily' | 'weekly' | 'monthly' | 'semi-annual' | 'annual'>('monthly');
+  const [isGeneratingInvestorReport, setIsGeneratingInvestorReport] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -238,6 +243,106 @@ export default function Reports() {
     }
   };
 
+  const generateInvestorReport = () => {
+    setIsGeneratingInvestorReport(true);
+    try {
+      const doc = new jsPDF();
+      const now = new Date();
+      let startDate = new Date();
+
+      switch (reportTimeframe) {
+        case 'daily': startDate.setDate(now.getDate() - 1); break;
+        case 'weekly': startDate.setDate(now.getDate() - 7); break;
+        case 'monthly': startDate.setMonth(now.getMonth() - 1); break;
+        case 'semi-annual': startDate.setMonth(now.getMonth() - 6); break;
+        case 'annual': startDate.setFullYear(now.getFullYear() - 1); break;
+      }
+
+      const filteredSales = ledger.filter(l => 
+        l.transaction_type === 'sale' && 
+        new Date(l.created_at) >= startDate
+      );
+
+      // Group by Category
+      const categorySales: Record<string, { revenue: number, items: number, transactions: number }> = {};
+      
+      filteredSales.forEach(sale => {
+        const item = inventory.find(i => i.id === sale.inventory_item_id);
+        const categoryName = item?.category || 'Uncategorized';
+        
+        if (!categorySales[categoryName]) {
+          categorySales[categoryName] = { revenue: 0, items: 0, transactions: 0 };
+        }
+        
+        categorySales[categoryName].revenue += (sale.amount || 0);
+        categorySales[categoryName].items += (sale.quantity || 1);
+        categorySales[categoryName].transactions += 1;
+      });
+
+      // Header
+      doc.setFontSize(24);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Investor-Grade Sales Analysis', 14, 25);
+      
+      doc.setFontSize(12);
+      doc.setTextColor(100);
+      doc.text(`Reporting Period: ${startDate.toLocaleDateString()} - ${now.toLocaleDateString()} (${reportTimeframe.toUpperCase()})`, 14, 35);
+      doc.text(`Generated for: Strategic Investment & Loan Assessment`, 14, 42);
+
+      // Executive Summary Table
+      const totalRevenue = Object.values(categorySales).reduce((acc, c) => acc + c.revenue, 0);
+      const totalItems = Object.values(categorySales).reduce((acc, c) => acc + c.items, 0);
+      const totalTransactions = Object.values(categorySales).reduce((acc, c) => acc + c.transactions, 0);
+
+      autoTable(doc, {
+        startY: 55,
+        head: [['Metric', 'Consolidated Value']],
+        body: [
+          ['Total Gross Revenue', `$${totalRevenue.toLocaleString()}`],
+          ['Total Units Sold', totalItems.toLocaleString()],
+          ['Transaction Volume', totalTransactions.toLocaleString()],
+          ['Average Transaction Value', `$${(totalTransactions > 0 ? totalRevenue / totalTransactions : 0).toLocaleString()}`],
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [15, 23, 42] }
+      });
+
+      // Category Breakdown
+      let finalY = (doc as any).lastAutoTable.finalY;
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Sales Performance by Category', 14, finalY + 15);
+
+      autoTable(doc, {
+        startY: finalY + 20,
+        head: [['Category', 'Units Sold', 'Transactions', 'Revenue Contribution', '% of Total']],
+        body: Object.entries(categorySales).map(([name, data]) => [
+          name,
+          data.items.toLocaleString(),
+          data.transactions.toLocaleString(),
+          `$${data.revenue.toLocaleString()}`,
+          `${((data.revenue / totalRevenue) * 100).toFixed(1)}%`
+        ]),
+        theme: 'grid',
+        headStyles: { fillColor: [59, 130, 246] }
+      });
+
+      // Verification Footer
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text('Confidential Document - For Authorized Use Only. Data sourced from RetailOS Ledger.', 14, pageHeight - 10);
+      doc.text(`Timestamp: ${now.toISOString()}`, 160, pageHeight - 10);
+
+      doc.save(`Investor_Sales_Report_${reportTimeframe}_${now.toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error('Investor Report Error:', err);
+      alert('Failed to generate investor report.');
+    } finally {
+      setIsGeneratingInvestorReport(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -347,6 +452,81 @@ export default function Reports() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Investor-Grade Sales Reports Card */}
+        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200">
+                <FileText size={20} />
+              </div>
+              <div>
+                <h2 className="font-bold text-slate-900">Investor-Grade Sales Analysis</h2>
+                <p className="text-xs text-slate-500">Generate detailed sales performance reports for loan applications and investors.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
+              {(['daily', 'weekly', 'monthly', 'semi-annual', 'annual'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setReportTimeframe(t)}
+                  className={cn(
+                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                    reportTimeframe === t 
+                      ? "bg-white text-blue-600 shadow-sm border border-slate-200" 
+                      : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  {t.replace('-', ' ')}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="md:col-span-2 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Target Period</p>
+                  <div className="flex items-center gap-2 text-slate-900 font-bold">
+                    <Calendar size={16} className="text-blue-500" />
+                    <span>Last {reportTimeframe.replace('-', ' ')}</span>
+                  </div>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Report Purpose</p>
+                  <div className="flex items-center gap-2 text-slate-900 font-bold">
+                    <CheckCircle2 size={16} className="text-emerald-500" />
+                    <span>Strategic Investment</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl">
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  This report provides a consolidated view of sales grouped by category, including revenue contribution percentages and unit volume. It is designed to meet the documentation standards required for business loan assessments and investor due diligence.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col justify-center gap-4">
+              <button 
+                onClick={generateInvestorReport}
+                disabled={isGeneratingInvestorReport}
+                className="w-full flex items-center justify-center gap-3 bg-blue-600 text-white px-6 py-4 rounded-2xl font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
+              >
+                {isGeneratingInvestorReport ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                ) : (
+                  <>
+                    <Download size={20} />
+                    Download Investor Report
+                  </>
+                )}
+              </button>
+              <p className="text-[10px] text-center text-slate-400 font-medium">
+                Format: PDF • Standard: Financial Grade
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Projection Tool */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
           <div className="p-6 border-b border-slate-100 flex items-center justify-between">
