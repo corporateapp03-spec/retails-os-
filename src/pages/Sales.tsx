@@ -12,7 +12,9 @@ import {
   Trash2,
   Edit3,
   Check,
-  X
+  X,
+  ShoppingCart,
+  Loader2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Loading from '../components/Loading';
@@ -23,6 +25,7 @@ export default function Sales() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [reversingId, setReversingId] = useState<string | null>(null);
+  const [reversingTransactionId, setReversingTransactionId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
 
@@ -78,8 +81,53 @@ export default function Sales() {
     }
   }
 
+  async function handleReverseTransaction(transactionSales: LedgerEntry[]) {
+    if (!window.confirm(`Reverse this entire sale (${transactionSales.length} items)? This will restore stock to inventory and remove the ledger entries.`)) {
+      return;
+    }
+
+    const firstSaleId = transactionSales[0].id;
+    setReversingTransactionId(firstSaleId);
+    try {
+      for (const sale of transactionSales) {
+        // 1. Restore stock if inventory_item_id exists
+        if (sale.inventory_item_id && sale.quantity) {
+          const { data: currentItem, error: fetchError } = await supabase
+            .from('inventory')
+            .select('quantity')
+            .eq('id', sale.inventory_item_id)
+            .single();
+
+          if (fetchError) throw fetchError;
+
+          const newQuantity = (currentItem?.quantity || 0) + sale.quantity;
+          const { error: invError } = await supabase
+            .from('inventory')
+            .update({ quantity: newQuantity })
+            .eq('id', sale.inventory_item_id);
+
+          if (invError) throw invError;
+        }
+
+        // 2. Delete from ledger
+        const { error: deleteError } = await supabase
+          .from('ledger')
+          .delete()
+          .eq('id', sale.id);
+
+        if (deleteError) throw deleteError;
+      }
+
+      fetchSales();
+    } catch (err) {
+      setError('Reversal Error: ' + (err as any)?.message);
+    } finally {
+      setReversingTransactionId(null);
+    }
+  }
+
   async function handleReverseSale(sale: LedgerEntry) {
-    if (!window.confirm('Reverse this sale? This will restore stock to inventory and remove the ledger entry.')) {
+    if (!window.confirm('Reverse this specific item from the sale? This will restore stock to inventory and remove the ledger entry.')) {
       return;
     }
 
@@ -141,6 +189,41 @@ export default function Sales() {
     (sale.fund_source || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Grouping logic
+  const groupedSales = React.useMemo(() => {
+    const groups: { date: string, transactions: { timestamp: string, items: LedgerEntry[] }[] }[] = [];
+    
+    // Sort sales by date descending
+    const sortedSales = [...filteredSales].sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    sortedSales.forEach(sale => {
+      const dateStr = new Date(sale.created_at).toLocaleDateString(undefined, { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      const timestamp = sale.created_at;
+
+      let dateGroup = groups.find(g => g.date === dateStr);
+      if (!dateGroup) {
+        dateGroup = { date: dateStr, transactions: [] };
+        groups.push(dateGroup);
+      }
+
+      let transaction = dateGroup.transactions.find(t => t.timestamp === timestamp);
+      if (!transaction) {
+        transaction = { timestamp, items: [] };
+        dateGroup.transactions.push(transaction);
+      }
+
+      transaction.items.push(sale);
+    });
+
+    return groups;
+  }, [filteredSales]);
+
   if (loading && sales.length === 0) {
     return <Loading />;
   }
@@ -198,121 +281,160 @@ export default function Sales() {
         </div>
       </div>
 
-      {/* Sales Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date & Time</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Product</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Qty</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Source</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredSales.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-16 text-center">
-                    <div className="max-w-xs mx-auto">
-                      <History size={40} className="mx-auto text-slate-200 mb-4" />
-                      <p className="text-slate-500 font-medium">No sales records found.</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredSales.map((sale) => (
-                  <tr key={sale.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <Calendar size={14} className="text-slate-400" />
-                        <span className="text-xs font-medium">
-                          {new Date(sale.created_at).toLocaleString()}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Package size={14} className="text-blue-400" />
-                        <span className="font-bold text-slate-900">{sale.inventory?.name || sale.description || 'Unknown Item'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-xs font-bold text-slate-700">{sale.quantity || 1}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {editingId === sale.id ? (
-                        <div className="flex items-center gap-2">
-                          <input 
-                            type="number" 
-                            value={editAmount || 0}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
-                              setEditAmount(isNaN(val) ? 0 : val);
-                            }}
-                            className="w-24 px-2 py-1 border border-blue-500 rounded text-sm outline-none"
-                            autoFocus
-                          />
-                          <button onClick={() => handleUpdateAmount(sale)} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded">
-                            <Check size={16} />
-                          </button>
-                          <button onClick={() => setEditingId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded">
-                            <X size={16} />
+      {/* Grouped Sales Display */}
+      <div className="space-y-10">
+        {groupedSales.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-16 text-center shadow-sm">
+            <div className="max-w-xs mx-auto">
+              <History size={40} className="mx-auto text-slate-200 mb-4" />
+              <p className="text-slate-500 font-medium">No sales records found.</p>
+            </div>
+          </div>
+        ) : (
+          groupedSales.map((dateGroup) => (
+            <div key={dateGroup.date} className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="h-px flex-1 bg-slate-200" />
+                <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-100 rounded-full border border-slate-200">
+                  <Calendar size={14} className="text-slate-500" />
+                  <span className="text-xs font-black text-slate-600 uppercase tracking-widest">{dateGroup.date}</span>
+                </div>
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {dateGroup.transactions.map((transaction) => {
+                  const totalAmount = transaction.items.reduce((sum, item) => sum + (item.amount || 0), 0);
+                  const firstItem = transaction.items[0];
+                  const isReversing = reversingTransactionId === firstItem.id;
+
+                  return (
+                    <div key={transaction.timestamp} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group">
+                      {/* Transaction Header */}
+                      <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
+                            <ShoppingCart size={20} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-black text-slate-900">
+                                Sale @ {new Date(transaction.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-200 px-2 py-0.5 rounded">
+                                {firstItem.fund_source}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-mono mt-0.5">ID: {transaction.timestamp.split('-').pop()}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-6">
+                          <div className="text-right">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Amount</p>
+                            <p className="text-xl font-black text-blue-600">${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                          </div>
+                          <button 
+                            disabled={isReversing}
+                            onClick={() => handleReverseTransaction(transaction.items)}
+                            className={cn(
+                              "p-2.5 rounded-xl transition-all flex items-center gap-2 text-xs font-bold",
+                              isReversing 
+                                ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
+                                : "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                            )}
+                          >
+                            {isReversing ? (
+                              <Loader2 className="animate-spin" size={16} />
+                            ) : (
+                              <>
+                                <RotateCcw size={16} />
+                                <span>Reverse Sale</span>
+                              </>
+                            )}
                           </button>
                         </div>
-                      ) : (
-                        <span className="text-sm font-black text-blue-600">
-                          ${(sale?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-100 px-2 py-1 rounded">
-                        {sale.fund_source}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button 
-                          onClick={() => {
-                            setEditingId(sale.id);
-                            setEditAmount(sale.amount);
-                          }}
-                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                          title="Edit Amount"
-                        >
-                          <Edit3 size={16} />
-                        </button>
-                        <button 
-                          disabled={reversingId === sale.id}
-                          onClick={() => handleReverseSale(sale)}
-                          className={cn(
-                            "p-2 rounded-lg transition-all flex items-center gap-1 text-xs font-bold",
-                            reversingId === sale.id 
-                              ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
-                              : "text-rose-500 hover:bg-rose-50"
-                          )}
-                          title="Reverse Sale"
-                        >
-                          {reversingId === sale.id ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-400" />
-                          ) : (
-                            <>
-                              <RotateCcw size={16} />
-                              <span className="hidden lg:inline">Reverse</span>
-                            </>
-                          )}
-                        </button>
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+
+                      {/* Transaction Items */}
+                      <div className="divide-y divide-slate-100">
+                        {transaction.items.map((item) => (
+                          <div key={item.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors">
+                            <div className="flex items-center gap-4">
+                              <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                                <Package size={16} />
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-slate-900">{item.inventory?.name || item.description || 'Unknown Item'}</p>
+                                <p className="text-xs text-slate-500">Quantity: <span className="font-bold text-slate-700">{item.quantity || 1}</span></p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-6">
+                              <div className="text-right sm:min-w-[100px]">
+                                {editingId === item.id ? (
+                                  <div className="flex items-center gap-2 justify-end">
+                                    <input 
+                                      type="number" 
+                                      value={editAmount || 0}
+                                      onChange={(e) => {
+                                        const val = parseFloat(e.target.value);
+                                        setEditAmount(isNaN(val) ? 0 : val);
+                                      }}
+                                      className="w-20 px-2 py-1 border border-blue-500 rounded text-xs outline-none"
+                                      autoFocus
+                                    />
+                                    <button onClick={() => handleUpdateAmount(item)} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded">
+                                      <Check size={14} />
+                                    </button>
+                                    <button onClick={() => setEditingId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded">
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 justify-end group/item">
+                                    <span className="text-sm font-bold text-slate-700">
+                                      ${(item?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                    <button 
+                                      onClick={() => {
+                                        setEditingId(item.id);
+                                        setEditAmount(item.amount);
+                                      }}
+                                      className="p-1 text-slate-300 hover:text-blue-600 opacity-0 group-hover/item:opacity-100 transition-all"
+                                    >
+                                      <Edit3 size={14} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <button 
+                                disabled={reversingId === item.id}
+                                onClick={() => handleReverseSale(item)}
+                                className={cn(
+                                  "p-1.5 rounded-lg transition-all text-slate-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100",
+                                  reversingId === item.id && "opacity-100"
+                                )}
+                                title="Reverse Item"
+                              >
+                                {reversingId === item.id ? (
+                                  <Loader2 className="animate-spin" size={14} />
+                                ) : (
+                                  <Trash2 size={14} />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
