@@ -47,7 +47,25 @@ export default function App() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // SECURITY: Sign out on tab switch, refresh, or close
+    const handleSecurityExit = () => {
+      supabase.auth.signOut();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        handleSecurityExit();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleSecurityExit);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('beforeunload', handleSecurityExit);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const handleLogout = async () => {
