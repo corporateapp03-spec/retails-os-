@@ -221,7 +221,7 @@ export default function App() {
           <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
           
           <div className="relative z-10">
-            <PinGuard protectedPages={['dashboard', 'outflow', 'reports', 'projection']} activePage={activePage}>
+            <PinGuard protectedPages={['dashboard', 'outflow', 'reports', 'projection', 'sales']} activePage={activePage}>
               {activePage === 'dashboard' && <Dashboard />}
               {activePage === 'inventory' && <Inventory />}
               {activePage === 'pos' && <POS />}
