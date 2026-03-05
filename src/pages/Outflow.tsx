@@ -169,26 +169,26 @@ export default function Outflow() {
       {/* Health Monitor Header */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {summaries.map((summary) => (
-          <div key={summary.category_id} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <HeartPulse size={64} className="text-slate-900" />
+          <div key={summary.category_id} className="vault-card p-6 relative overflow-hidden group hover:gold-glow transition-all duration-300">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <HeartPulse size={64} className="text-white" />
             </div>
-            <h3 className="text-slate-500 text-xs font-black uppercase tracking-widest mb-4">{summary.category_name}</h3>
+            <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-4">{summary.category_name}</h3>
             
             <div className="space-y-4">
               <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Capital Health</p>
+                <p className="text-[10px] text-slate-500 font-black uppercase mb-1 tracking-widest">Capital Health</p>
                 <p className={cn(
-                  "text-2xl font-black",
-                  (summary.capital_health ?? 0) > 0 ? "text-slate-900" : "text-rose-600"
+                  "text-2xl font-black transition-colors",
+                  (summary.capital_health ?? 0) > 0 ? "text-white group-hover:gold-text" : "text-rose-500"
                 )}>
                   ${(summary.capital_health || 0).toLocaleString()}
                 </p>
               </div>
               
-              <div className="pt-4 border-t border-slate-50">
-                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Available Profit</p>
-                <p className="text-xl font-black text-emerald-600">
+              <div className="pt-4 border-t border-white/5">
+                <p className="text-[10px] text-slate-500 font-black uppercase mb-1 tracking-widest">Available Profit</p>
+                <p className="text-xl font-black text-emerald-500">
                   ${(summary.total_profit || 0).toLocaleString()}
                 </p>
               </div>
@@ -200,22 +200,22 @@ export default function Outflow() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Entry Form */}
         <div className="lg:col-span-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden sticky top-8">
-            <div className="p-6 bg-slate-900 text-white">
-              <h2 className="text-lg font-black flex items-center gap-2">
-                <ArrowDownCircle size={20} className="text-rose-400" />
+          <div className="vault-card overflow-hidden sticky top-8">
+            <div className="p-6 bg-[#050505] border-b border-white/5">
+              <h2 className="text-lg font-black flex items-center gap-2 text-white uppercase tracking-tighter">
+                <ArrowDownCircle size={20} className="text-[#FFD700]" />
                 Record Outflow
               </h2>
-              <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-tighter">Mission-Critical Financial Entry</p>
+              <p className="text-[10px] text-slate-500 mt-1 uppercase font-black tracking-widest">Mission-Critical Financial Entry</p>
             </div>
             
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase">Select Category</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Category</label>
                 <select 
                   value={selectedCategoryId}
                   onChange={(e) => setSelectedCategoryId(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 appearance-none"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none font-black text-white appearance-none"
                 >
                   {summaries.map(s => (
                     <option key={s.category_id} value={s.category_id}>{s.category_name}</option>
@@ -224,14 +224,14 @@ export default function Outflow() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase">Transaction Type</label>
-                <div className="flex p-1 bg-slate-100 rounded-2xl">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Transaction Type</label>
+                <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10">
                   <button
                     type="button"
                     onClick={() => setIsDecapitation(false)}
                     className={cn(
-                      "flex-1 py-2.5 rounded-xl text-xs font-black transition-all",
-                      !isDecapitation ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                      "flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest",
+                      !isDecapitation ? "bg-white/10 text-[#FFD700] shadow-sm border border-white/10" : "text-slate-600 hover:text-slate-400"
                     )}
                   >
                     Expense (Profit)
@@ -240,8 +240,8 @@ export default function Outflow() {
                     type="button"
                     onClick={() => setIsDecapitation(true)}
                     className={cn(
-                      "flex-1 py-2.5 rounded-xl text-xs font-black transition-all",
-                      isDecapitation ? "bg-rose-600 text-white shadow-lg shadow-rose-100" : "text-slate-400 hover:text-slate-600"
+                      "flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest",
+                      isDecapitation ? "bg-rose-500/20 text-rose-500 shadow-lg border border-rose-500/30" : "text-slate-600 hover:text-slate-400"
                     )}
                   >
                     Decapitation (Capital)
@@ -250,45 +250,45 @@ export default function Outflow() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase">Amount ($)</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Amount ($)</label>
                 <input 
                   type="number"
                   step="0.01"
                   value={amount || ''}
                   onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
                   placeholder="0.00"
-                  className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none text-2xl font-black text-slate-900"
+                  className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-2xl font-black text-white placeholder:text-slate-800"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase">Description / Reason</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Description / Reason</label>
                 <textarea 
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="e.g. Monthly Rent, Generator Fuel, Capital Withdrawal for Expansion..."
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none text-sm min-h-[100px] resize-none"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-sm min-h-[100px] resize-none text-white placeholder:text-slate-800"
                 />
               </div>
 
               {error && (
-                <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-3">
-                  <AlertCircle size={18} className="text-rose-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-rose-700 font-medium leading-relaxed">{error}</p>
+                <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3">
+                  <AlertCircle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-rose-400 font-black leading-relaxed uppercase tracking-tighter">{error}</p>
                 </div>
               )}
 
               <button
                 disabled={isSubmitting}
                 className={cn(
-                  "w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all",
+                  "w-full py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all uppercase tracking-widest",
                   isDecapitation 
-                    ? "bg-rose-600 text-white hover:bg-rose-700 shadow-xl shadow-rose-100" 
-                    : "bg-slate-900 text-white hover:bg-slate-800 shadow-xl shadow-slate-200"
+                    ? "bg-rose-500 text-white hover:bg-rose-600 shadow-[0_0_20px_rgba(244,63,94,0.2)]" 
+                    : "bg-[#FFD700] text-[#0a0a0a] hover:bg-[#FFD700]/90 shadow-[0_0_20px_rgba(255,215,0,0.2)]"
                 )}
               >
                 {isSubmitting ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current" />
                 ) : (
                   <>
                     <ShieldCheck size={18} />
@@ -302,13 +302,13 @@ export default function Outflow() {
 
         {/* Outflow Archive */}
         <div className="lg:col-span-8 space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-lg font-black flex items-center gap-2">
-                <History size={20} className="text-blue-600" />
+          <div className="vault-card overflow-hidden">
+            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
+              <h2 className="text-lg font-black flex items-center gap-2 text-white uppercase tracking-tighter">
+                <History size={20} className="text-[#FFD700]" />
                 Outflow Archive
               </h2>
-              <span className="text-[10px] font-black bg-slate-100 px-3 py-1 rounded-full text-slate-500 uppercase">
+              <span className="text-[10px] font-black bg-white/5 border border-white/10 px-3 py-1 rounded-full text-slate-500 uppercase tracking-widest">
                 {outflows.length} Records
               </span>
             </div>
@@ -316,47 +316,47 @@ export default function Outflow() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-100">
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                  <tr className="bg-white/5 border-b border-white/10">
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Date</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Category</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Type</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Amount</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-white/5">
                   {outflows.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-20 text-center">
                         <div className="max-w-xs mx-auto opacity-20">
-                          <History size={48} className="mx-auto mb-4" />
-                          <p className="font-black uppercase text-xs">No Outflow Records</p>
+                          <History size={48} className="mx-auto mb-4 text-white" />
+                          <p className="font-black uppercase text-[10px] tracking-widest text-white">No Outflow Records</p>
                         </div>
                       </td>
                     </tr>
                   ) : (
                     outflows.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={item.id} className="hover:bg-white/5 transition-colors group">
                         <td className="px-6 py-4">
-                          <p className="text-xs font-bold text-slate-900">{new Date(item.created_at).toLocaleDateString()}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{new Date(item.created_at).toLocaleTimeString()}</p>
+                          <p className="text-xs font-black text-white uppercase tracking-tighter">{new Date(item.created_at).toLocaleDateString()}</p>
+                          <p className="text-[10px] text-slate-600 font-mono">{new Date(item.created_at).toLocaleTimeString()}</p>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-xs font-black text-slate-700">
+                          <span className="text-xs font-black text-slate-400 uppercase tracking-tighter">
                             {summaries.find(s => s.category_id === item.category_id)?.category_name || 'Unknown'}
                           </span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
                             <span className={cn(
-                              "text-[10px] font-black px-2 py-0.5 rounded-full w-fit uppercase",
+                              "text-[10px] font-black px-2 py-0.5 rounded-full w-fit uppercase tracking-widest border",
                               item.transaction_type.toLowerCase().includes('capital') 
-                                ? "bg-rose-50 text-rose-600" 
-                                : "bg-blue-50 text-blue-600"
+                                ? "bg-rose-500/10 text-rose-500 border-rose-500/20" 
+                                : "bg-white/5 text-[#FFD700] border-white/10"
                             )}>
                               {item.transaction_type.replace('_', ' ')}
                             </span>
-                            <p className="text-[10px] text-slate-400 mt-1 italic truncate max-w-[150px]">
+                            <p className="text-[10px] text-slate-600 mt-1 italic truncate max-w-[150px] font-medium">
                               {item.description || 'No description'}
                             </p>
                           </div>
@@ -368,18 +368,18 @@ export default function Outflow() {
                                 type="number"
                                 value={editAmount}
                                 onChange={(e) => setEditAmount(parseFloat(e.target.value) || 0)}
-                                className="w-20 px-2 py-1 border border-blue-500 rounded text-xs font-black outline-none"
+                                className="w-20 px-2 py-1 bg-white/5 border border-[#FFD700]/50 rounded text-xs font-black outline-none text-white"
                                 autoFocus
                               />
-                              <button onClick={() => handleUpdateAmount(item.id)} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded">
+                              <button onClick={() => handleUpdateAmount(item.id)} className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded">
                                 <Check size={14} />
                               </button>
-                              <button onClick={() => setEditingId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded">
+                              <button onClick={() => setEditingId(null)} className="p-1 text-slate-500 hover:bg-white/5 rounded">
                                 <X size={14} />
                               </button>
                             </div>
                           ) : (
-                            <span className="text-sm font-black text-slate-900">
+                            <span className="text-sm font-black text-white group-hover:gold-text transition-colors">
                               ${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </span>
                           )}
@@ -391,13 +391,13 @@ export default function Outflow() {
                                 setEditingId(item.id);
                                 setEditAmount(item.amount);
                               }}
-                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                              className="p-2 text-slate-600 hover:text-[#FFD700] hover:bg-[#FFD700]/10 rounded-xl transition-all"
                             >
                               <Edit3 size={14} />
                             </button>
                             <button 
                               onClick={() => handleReverse(item.id)}
-                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                              className="p-2 text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
                             >
                               <Trash2 size={14} />
                             </button>

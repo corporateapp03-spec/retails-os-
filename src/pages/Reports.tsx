@@ -346,7 +346,7 @@ export default function Reports() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FFD700]"></div>
       </div>
     );
   }
@@ -354,9 +354,9 @@ export default function Reports() {
   if (!analytics || analytics.totalRevenue === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <BarChart3 size={64} className="text-slate-200 mb-4" />
-        <h2 className="text-2xl font-bold text-slate-800">Insufficient Data for Analysis</h2>
-        <p className="text-slate-500 mt-2 max-w-md">
+        <BarChart3 size={64} className="text-slate-800 mb-4" />
+        <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Insufficient Data for Analysis</h2>
+        <p className="text-slate-500 mt-2 max-w-md text-sm font-medium">
           We need more sales and ledger data to generate an executive report. Start processing sales in the POS to see insights here.
         </p>
       </div>
@@ -370,12 +370,12 @@ export default function Reports() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Executive Intelligence</h1>
-          <p className="text-slate-500">Business performance, financial health, and strategic projections.</p>
+          <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Executive Intelligence</h1>
+          <p className="text-slate-500 font-medium">Business performance, financial health, and strategic projections.</p>
         </div>
         <button 
           onClick={generatePDF}
-          className="flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-xl hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+          className="flex items-center gap-2 bg-[#FFD700] text-[#0a0a0a] px-6 py-3 rounded-2xl hover:bg-[#FFD700]/90 transition-all shadow-[0_0_20px_rgba(255,215,0,0.2)] font-black uppercase tracking-widest text-xs"
         >
           <Download size={20} />
           Generate Executive Report
@@ -384,68 +384,68 @@ export default function Reports() {
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+            <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-xl border border-emerald-500/20">
               <TrendingUp size={24} />
             </div>
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
+            <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20 uppercase tracking-widest">
               P&L
             </span>
           </div>
-          <p className="text-slate-500 text-sm font-medium">Net Profit (Summary)</p>
-          <h3 className="text-2xl font-bold text-slate-900 mt-1">
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Net Profit (Summary)</p>
+          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
             ${analytics.netProfit.toLocaleString()}
           </h3>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+            <div className="p-2 bg-blue-500/10 text-blue-500 rounded-xl border border-blue-500/20">
               <BarChart3 size={24} />
             </div>
-            <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+            <span className="text-[10px] font-black text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full border border-blue-500/20 uppercase tracking-widest">
               Velocity
             </span>
           </div>
-          <p className="text-slate-500 text-sm font-medium">Sales Velocity</p>
-          <h3 className="text-2xl font-bold text-slate-900 mt-1">
-            {analytics.salesVelocity.toFixed(2)} <span className="text-sm font-normal text-slate-400">/day</span>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Sales Velocity</p>
+          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
+            {analytics.salesVelocity.toFixed(2)} <span className="text-sm font-normal text-slate-600">/day</span>
           </h3>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+            <div className="p-2 bg-purple-500/10 text-purple-500 rounded-xl border border-purple-500/20">
               <Package size={24} />
             </div>
-            <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
+            <span className="text-[10px] font-black text-purple-500 bg-purple-500/10 px-2 py-1 rounded-full border border-purple-500/20 uppercase tracking-widest">
               Assets
             </span>
           </div>
-          <p className="text-slate-500 text-sm font-medium">Inventory Value</p>
-          <h3 className="text-2xl font-bold text-slate-900 mt-1">
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Inventory Value</p>
+          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
             ${analytics.assetValuation.toLocaleString()}
           </h3>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+            <div className="p-2 bg-amber-500/10 text-amber-500 rounded-xl border border-amber-500/20">
               <AlertTriangle size={24} />
             </div>
             {analytics.deadStockRatio > 0.3 ? (
-              <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">
+              <span className="text-[10px] font-black text-rose-500 bg-rose-500/10 px-2 py-1 rounded-full border border-rose-500/20 uppercase tracking-widest">
                 High Risk
               </span>
             ) : (
-              <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+              <span className="text-[10px] font-black text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full border border-amber-500/20 uppercase tracking-widest">
                 Monitoring
               </span>
             )}
           </div>
-          <p className="text-slate-500 text-sm font-medium">Dead Stock Ratio</p>
-          <h3 className="text-2xl font-bold text-slate-900 mt-1">
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Dead Stock Ratio</p>
+          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
             {(analytics.deadStockRatio * 100).toFixed(1)}%
           </h3>
         </div>
@@ -453,18 +453,18 @@ export default function Reports() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Investor-Grade Sales Reports Card */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="lg:col-span-3 vault-card overflow-hidden">
+          <div className="p-6 border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/5">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200">
+              <div className="p-2 bg-[#FFD700] text-[#0a0a0a] rounded-xl shadow-[0_0_20px_rgba(255,215,0,0.2)]">
                 <FileText size={20} />
               </div>
               <div>
-                <h2 className="font-bold text-slate-900">Investor-Grade Sales Analysis</h2>
-                <p className="text-xs text-slate-500">Generate detailed sales performance reports for loan applications and investors.</p>
+                <h2 className="font-black text-white uppercase tracking-tighter">Investor-Grade Sales Analysis</h2>
+                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Generate detailed sales performance reports for loan applications and investors.</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/10">
               {(['daily', 'weekly', 'monthly', 'semi-annual', 'annual'] as const).map((t) => (
                 <button
                   key={t}
@@ -472,8 +472,8 @@ export default function Reports() {
                   className={cn(
                     "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
                     reportTimeframe === t 
-                      ? "bg-white text-blue-600 shadow-sm border border-slate-200" 
-                      : "text-slate-400 hover:text-slate-600"
+                      ? "bg-white/10 text-[#FFD700] shadow-sm border border-white/10" 
+                      : "text-slate-600 hover:text-slate-400"
                   )}
                 >
                   {t.replace('-', ' ')}
@@ -484,23 +484,23 @@ export default function Reports() {
           <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="md:col-span-2 space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Target Period</p>
-                  <div className="flex items-center gap-2 text-slate-900 font-bold">
-                    <Calendar size={16} className="text-blue-500" />
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Target Period</p>
+                  <div className="flex items-center gap-2 text-white font-black uppercase tracking-tighter">
+                    <Calendar size={16} className="text-[#FFD700]" />
                     <span>Last {reportTimeframe.replace('-', ' ')}</span>
                   </div>
                 </div>
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Report Purpose</p>
-                  <div className="flex items-center gap-2 text-slate-900 font-bold">
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Report Purpose</p>
+                  <div className="flex items-center gap-2 text-white font-black uppercase tracking-tighter">
                     <CheckCircle2 size={16} className="text-emerald-500" />
                     <span>Strategic Investment</span>
                   </div>
                 </div>
               </div>
-              <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl">
-                <p className="text-xs text-blue-700 leading-relaxed">
+              <div className="bg-[#FFD700]/5 border border-[#FFD700]/10 p-4 rounded-2xl">
+                <p className="text-xs text-slate-400 leading-relaxed font-medium">
                   This report provides a consolidated view of sales grouped by category, including revenue contribution percentages and unit volume. It is designed to meet the documentation standards required for business loan assessments and investor due diligence.
                 </p>
               </div>
@@ -509,10 +509,10 @@ export default function Reports() {
               <button 
                 onClick={generateInvestorReport}
                 disabled={isGeneratingInvestorReport}
-                className="w-full flex items-center justify-center gap-3 bg-blue-600 text-white px-6 py-4 rounded-2xl font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-200 disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-3 bg-[#FFD700] text-[#0a0a0a] px-6 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-[#FFD700]/90 transition-all shadow-[0_0_20px_rgba(255,215,0,0.2)] disabled:opacity-50"
               >
                 {isGeneratingInvestorReport ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current" />
                 ) : (
                   <>
                     <Download size={20} />
@@ -520,7 +520,7 @@ export default function Reports() {
                   </>
                 )}
               </button>
-              <p className="text-[10px] text-center text-slate-400 font-medium">
+              <p className="text-[10px] text-center text-slate-600 font-black uppercase tracking-widest">
                 Format: PDF • Standard: Financial Grade
               </p>
             </div>
@@ -528,16 +528,16 @@ export default function Reports() {
         </div>
 
         {/* Projection Tool */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+        <div className="lg:col-span-2 vault-card overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
             <div className="flex items-center gap-2">
-              <PieChartIcon className="text-slate-400" size={20} />
-              <h2 className="font-bold text-slate-900">Projection & Distribution Tool</h2>
+              <PieChartIcon className="text-slate-500" size={20} />
+              <h2 className="font-black text-white uppercase tracking-tighter">Projection & Distribution</h2>
             </div>
             {totalPercentage !== 100 && (
-              <span className="text-xs font-bold text-red-500 flex items-center gap-1">
+              <span className="text-[10px] font-black text-rose-500 flex items-center gap-1 uppercase tracking-widest">
                 <AlertTriangle size={12} />
-                Total must be 100% (Current: {totalPercentage}%)
+                Total must be 100%
               </span>
             )}
           </div>
@@ -545,8 +545,8 @@ export default function Reports() {
             <div className="space-y-6">
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Partner A Split (%)</label>
-                  <span className="text-xs font-bold text-emerald-600">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Partner A Split (%)</label>
+                  <span className="text-xs font-black text-emerald-500">
                     ${((analytics.netProfit * partnerA) / 100).toLocaleString()}
                   </span>
                 </div>
@@ -555,16 +555,16 @@ export default function Reports() {
                     type="number" 
                     value={partnerA}
                     onChange={(e) => setPartnerA(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-black text-white focus:border-[#FFD700]/50 outline-none transition-all"
                   />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</div>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 font-black">%</div>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Partner B Split (%)</label>
-                  <span className="text-xs font-bold text-blue-600">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Partner B Split (%)</label>
+                  <span className="text-xs font-black text-blue-500">
                     ${((analytics.netProfit * partnerB) / 100).toLocaleString()}
                   </span>
                 </div>
@@ -573,16 +573,16 @@ export default function Reports() {
                     type="number" 
                     value={partnerB}
                     onChange={(e) => setPartnerB(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-black text-white focus:border-[#FFD700]/50 outline-none transition-all"
                   />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</div>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 font-black">%</div>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Reinvestment (%)</label>
-                  <span className="text-xs font-bold text-amber-600">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Reinvestment (%)</label>
+                  <span className="text-xs font-black text-amber-500">
                     ${((analytics.netProfit * reinvestment) / 100).toLocaleString()}
                   </span>
                 </div>
@@ -591,19 +591,19 @@ export default function Reports() {
                     type="number" 
                     value={reinvestment}
                     onChange={(e) => setReinvestment(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-black text-white focus:border-[#FFD700]/50 outline-none transition-all"
                   />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</div>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 font-black">%</div>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-50">
+              <div className="pt-4 border-t border-white/5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs text-slate-400 uppercase tracking-wider font-bold">
+                  <div className="flex items-center gap-2 text-[10px] text-slate-600 uppercase tracking-widest font-black">
                     {totalPercentage === 100 ? (
                       <CheckCircle2 size={14} className="text-emerald-500" />
                     ) : (
-                      <AlertTriangle size={14} className="text-red-500" />
+                      <AlertTriangle size={14} className="text-rose-500" />
                     )}
                     Total: {totalPercentage}%
                   </div>
@@ -613,9 +613,9 @@ export default function Reports() {
                       setPartnerB(40);
                       setReinvestment(20);
                     }}
-                    className="text-[10px] font-bold text-slate-400 hover:text-slate-900 uppercase tracking-widest"
+                    className="text-[10px] font-black text-slate-600 hover:text-[#FFD700] uppercase tracking-widest transition-colors"
                   >
-                    Reset to Default
+                    Reset
                   </button>
                 </div>
               </div>
@@ -632,6 +632,7 @@ export default function Reports() {
                     outerRadius={100}
                     paddingAngle={5}
                     dataKey="value"
+                    stroke="none"
                   >
                     {distributionData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
@@ -639,59 +640,60 @@ export default function Reports() {
                   </Pie>
                   <Tooltip 
                     formatter={(value: number) => `$${value.toLocaleString()}`}
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }}
+                    itemStyle={{ color: '#fff' }}
                   />
                   <Legend verticalAlign="bottom" height={36}/>
                 </PieChart>
               </ResponsiveContainer>
               <div className="text-center mt-4">
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Profit Pool</p>
-                <p className="text-xl font-bold text-slate-900">${analytics.netProfit.toLocaleString()}</p>
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Profit Pool</p>
+                <p className="text-xl font-black text-white">${analytics.netProfit.toLocaleString()}</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Inventory Velocity */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-slate-100">
-            <h2 className="font-bold text-slate-900">Inventory Velocity</h2>
+        <div className="vault-card overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-white/5 bg-white/5">
+            <h2 className="font-black text-white uppercase tracking-tighter">Inventory Velocity</h2>
           </div>
           <div className="p-6 space-y-6 flex-1">
             <div>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Fast-Moving (Top 5)</h3>
+              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Fast-Moving (Top 5)</h3>
               <div className="space-y-3">
                 {analytics.fastMoving.map((item, idx) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <div key={item.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 group hover:border-[#FFD700]/30 transition-all">
                     <div className="flex items-center gap-3">
-                      <span className="w-6 h-6 flex items-center justify-center bg-white rounded-full text-[10px] font-bold text-slate-400 border border-slate-100">
+                      <span className="w-6 h-6 flex items-center justify-center bg-white/5 rounded-full text-[10px] font-black text-slate-500 border border-white/10 group-hover:text-[#FFD700]">
                         0{idx + 1}
                       </span>
-                      <span className="text-sm font-bold text-slate-700 truncate max-w-[120px]">{item.name}</span>
+                      <span className="text-xs font-black text-slate-400 truncate max-w-[120px] uppercase tracking-tighter group-hover:text-white transition-colors">{item.name}</span>
                     </div>
-                    <span className="text-xs font-bold text-emerald-600">{item.count} sold</span>
+                    <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">{item.count} sold</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="pt-6 border-t border-slate-100">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Dead Stock Analysis</h3>
-              <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl">
-                <div className="flex items-center gap-2 text-amber-700 font-bold text-sm mb-1">
+            <div className="pt-6 border-t border-white/5">
+              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Dead Stock Analysis</h3>
+              <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl">
+                <div className="flex items-center gap-2 text-amber-500 font-black text-[10px] mb-1 uppercase tracking-widest">
                   <AlertTriangle size={16} />
                   {analytics.deadStock.length} Items Stagnant
                 </div>
-                <p className="text-xs text-amber-600 leading-relaxed">
+                <p className="text-[10px] text-amber-500/70 leading-relaxed font-medium uppercase tracking-tighter">
                   These items have had zero sales in the last 30 days, tying up 
-                  <span className="font-bold"> ${analytics.deadStockValue.toLocaleString()}</span> in capital.
+                  <span className="font-black text-amber-500"> ${analytics.deadStockValue.toLocaleString()}</span> in capital.
                 </p>
               </div>
             </div>
           </div>
-          <div className="p-4 bg-slate-50 border-t border-slate-100">
-            <button className="w-full flex items-center justify-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">
-              View Full Inventory Health
+          <div className="p-4 bg-white/5 border-t border-white/5">
+            <button className="w-full flex items-center justify-center gap-2 text-[10px] font-black text-slate-600 hover:text-[#FFD700] transition-colors uppercase tracking-widest">
+              View Full Health
               <ArrowRight size={14} />
             </button>
           </div>

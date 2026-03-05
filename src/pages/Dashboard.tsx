@@ -66,33 +66,33 @@ export default function Dashboard() {
     <div className="space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {summaries.map((summary) => (
-          <div key={summary.category_id} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+          <div key={summary.category_id} className="vault-card p-6 hover:gold-glow transition-all duration-300 group">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="text-slate-500 text-sm font-medium uppercase tracking-wider">{summary.category_name}</h3>
-                <p className="text-2xl font-bold text-slate-900 mt-1">
+                <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{summary.category_name}</h3>
+                <p className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
                   ${summary.total_revenue?.toLocaleString() || '0'}
                 </p>
               </div>
-              <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+              <div className="p-2 bg-[#FFD700]/10 rounded-xl text-[#FFD700] shadow-[0_0_10px_rgba(255,215,0,0.1)]">
                 <TrendingUp size={20} />
               </div>
             </div>
             
             <div className="space-y-4 mt-6">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500">Available Profit</span>
-                <span className="font-semibold text-emerald-600">+${summary.total_profit?.toLocaleString() || '0'}</span>
+              <div className="flex justify-between items-center text-xs font-bold">
+                <span className="text-slate-500 uppercase tracking-tighter">Available Profit</span>
+                <span className="text-emerald-500">+${summary.total_profit?.toLocaleString() || '0'}</span>
               </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-500">Total Expenses</span>
-                <span className="font-semibold text-rose-600">-${summary.total_expenses?.toLocaleString() || '0'}</span>
+              <div className="flex justify-between items-center text-xs font-bold">
+                <span className="text-slate-500 uppercase tracking-tighter">Total Expenses</span>
+                <span className="text-rose-500">-${summary.total_expenses?.toLocaleString() || '0'}</span>
               </div>
-              <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
-                <span className="text-sm font-medium text-slate-700">Capital Health</span>
+              <div className="pt-4 border-t border-white/5 flex justify-between items-center">
+                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Capital Health</span>
                 <span className={cn(
-                  "text-sm font-bold px-2 py-1 rounded",
-                  (summary.capital_health ?? 0) >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+                  "text-xs font-black px-3 py-1 rounded-full uppercase tracking-tighter",
+                  (summary.capital_health ?? 0) >= 0 ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-rose-500/10 text-rose-500 border border-rose-500/20"
                 )}>
                   ${summary.capital_health?.toLocaleString() || '0'}
                 </span>
@@ -103,75 +103,35 @@ export default function Dashboard() {
       </div>
 
       {summaries.length === 0 && (
-        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-12 text-center max-w-3xl mx-auto">
-          <AlertCircle className="mx-auto text-blue-400 mb-4" size={48} />
-          <h3 className="text-blue-900 font-bold text-xl">Dashboard is Empty</h3>
-          <p className="text-blue-700 mt-2">
-            The <strong>business_summary</strong> view returned no data. This usually means your database tables are empty or RLS is blocking access.
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-12 text-center max-w-3xl mx-auto backdrop-blur-xl">
+          <AlertCircle className="mx-auto text-[#FFD700] mb-4 opacity-50" size={48} />
+          <h3 className="text-[#FFD700] font-black text-xl uppercase tracking-tighter">System Offline / Empty</h3>
+          <p className="text-slate-500 mt-2 font-medium">
+            The <strong>business_summary</strong> view returned no data. Ensure your database tables are populated and permissions are set.
           </p>
-          
-          <div className="mt-8 space-y-4 text-left">
-            <div className="bg-white p-6 rounded-xl border border-blue-100">
-              <p className="text-sm font-bold text-blue-900 uppercase mb-3 flex items-center gap-2">
-                <div className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px]">1</div>
-                Run this SQL in Supabase
-              </p>
-              <p className="text-xs text-blue-600 mb-4">
-                Copy and paste this into your <strong>Supabase SQL Editor</strong> to create the required view and permissions:
-              </p>
-              <div className="bg-slate-900 text-slate-100 p-4 rounded-lg font-mono text-[10px] overflow-x-auto leading-relaxed">
-                <pre>{`-- 1. Create the Business Summary View
-CREATE OR REPLACE VIEW business_summary AS
-SELECT 
-    c.id as category_id,
-    c.name as category_name,
-    COALESCE(SUM(CASE WHEN l.transaction_type = 'sale' THEN l.amount ELSE 0 END), 0) as total_revenue,
-    COALESCE(SUM(CASE WHEN l.transaction_type = 'sale' THEN l.amount ELSE 0 END) - 
-             SUM(CASE WHEN l.transaction_type = 'expense' THEN l.amount ELSE 0 END), 0) as total_profit,
-    COALESCE(SUM(CASE WHEN l.transaction_type = 'expense' THEN l.amount ELSE 0 END), 0) as total_expenses,
-    c.initial_capital - 
-    COALESCE(SUM(CASE WHEN l.transaction_type IN ('capital_withdrawal', 'CAPITAL_WITHDRAWAL', 'capital_deduction') THEN l.amount ELSE 0 END), 0) as capital_health
-FROM categories c
-LEFT JOIN ledger l ON c.id = l.category_id
-GROUP BY c.id, c.name, c.initial_capital;
-
--- 2. Grant Permissions
-GRANT SELECT ON business_summary TO anon;
-GRANT SELECT ON business_summary TO authenticated;
-
--- 3. Ensure RLS is configured for underlying tables
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ledger ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Allow public read" ON categories FOR SELECT USING (true);
-CREATE POLICY "Allow public read" ON inventory FOR SELECT USING (true);
-CREATE POLICY "Allow public read" ON ledger FOR SELECT USING (true);`}</pre>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
       {/* Quick Stats Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-slate-900 text-white rounded-2xl p-8 flex items-center justify-between">
-          <div>
-            <p className="text-slate-400 text-sm font-medium">Total Portfolio Value</p>
-            <h2 className="text-3xl font-bold mt-2">
+        <div className="bg-[#050505] border border-white/5 rounded-3xl p-8 flex items-center justify-between shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD700]/5 blur-[60px] rounded-full" />
+          <div className="relative z-10">
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Total Portfolio Value</p>
+            <h2 className="text-4xl font-black mt-2 text-white group-hover:gold-text transition-all">
               ${(summaries.reduce((acc, s) => acc + (s.total_revenue || 0), 0) ?? 0).toLocaleString()}
             </h2>
           </div>
-          <Wallet size={48} className="text-slate-700" />
+          <Wallet size={48} className="text-slate-800 group-hover:text-[#FFD700]/20 transition-colors" />
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 flex items-center justify-between">
-          <div>
-            <p className="text-slate-500 text-sm font-medium">Net System Profit</p>
-            <h2 className="text-3xl font-bold mt-2 text-emerald-600">
+        <div className="vault-card p-8 flex items-center justify-between group">
+          <div className="relative z-10">
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Net System Profit</p>
+            <h2 className="text-4xl font-black mt-2 text-emerald-500 group-hover:drop-shadow-[0_0_10px_rgba(16,185,129,0.3)] transition-all">
               ${(summaries.reduce((acc, s) => acc + (s.total_profit || 0), 0) ?? 0).toLocaleString()}
             </h2>
           </div>
-          <TrendingUp size={48} className="text-emerald-100" />
+          <TrendingUp size={48} className="text-emerald-500/10 group-hover:text-emerald-500/20 transition-colors" />
         </div>
       </div>
     </div>

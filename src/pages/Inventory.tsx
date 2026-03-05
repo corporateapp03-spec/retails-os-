@@ -164,51 +164,52 @@ export default function Inventory() {
     <div className="space-y-6">
       {/* Asset Valuation Header */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-lg border border-slate-800 flex items-center justify-between">
-          <div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Total Asset Value</p>
-            <h2 className="text-3xl font-black mt-2 flex items-baseline gap-1">
-              <span className="text-blue-400 text-xl">$</span>
+        <div className="bg-[#050505] border border-white/5 rounded-3xl p-6 shadow-2xl flex items-center justify-between group overflow-hidden relative">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-[#FFD700]/5 blur-[40px] rounded-full" />
+          <div className="relative z-10">
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Total Asset Value</p>
+            <h2 className="text-3xl font-black mt-2 flex items-baseline gap-1 text-white group-hover:gold-text transition-all">
+              <span className="text-[#FFD700] text-xl">$</span>
               {totalAssetValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h2>
-            <p className="text-[10px] text-slate-500 mt-2 font-mono">SUM(cost_price * quantity)</p>
+            <p className="text-[10px] text-slate-600 mt-2 font-mono uppercase tracking-tighter">Inventory Liquidity</p>
           </div>
-          <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-blue-400">
+          <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-[#FFD700] border border-white/5 group-hover:gold-glow transition-all">
             <DollarSign size={24} />
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 flex items-center justify-between">
+        <div className="vault-card p-6 flex items-center justify-between group">
           <div>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Stock Items</p>
-            <h2 className="text-3xl font-black mt-2 text-slate-900">
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Stock Items</p>
+            <h2 className="text-3xl font-black mt-2 text-white group-hover:gold-text transition-all">
               {items.length}
             </h2>
           </div>
-          <Package size={32} className="text-slate-200" />
+          <Package size={32} className="text-white/10 group-hover:text-[#FFD700]/20 transition-colors" />
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 flex items-center justify-between">
+        <div className="vault-card p-6 flex items-center justify-between group">
           <div>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">System Status</p>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">System Status</p>
             <div className="flex items-center gap-2 mt-2">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-sm font-bold text-slate-700">Live Connection</span>
+              <div className="w-2 h-2 bg-[#FFD700] rounded-full animate-pulse shadow-[0_0_10px_rgba(255,215,0,0.5)]" />
+              <span className="text-sm font-black text-white uppercase tracking-tighter">Live Connection</span>
             </div>
           </div>
-          <TrendingUp size={32} className="text-slate-200" />
+          <TrendingUp size={32} className="text-white/10 group-hover:text-[#FFD700]/20 transition-colors" />
         </div>
       </div>
 
       {/* Error Display */}
       {error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-          <AlertTriangle className="text-rose-600 shrink-0" size={20} />
+        <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+          <AlertTriangle className="text-rose-500 shrink-0" size={20} />
           <div className="flex-1">
-            <p className="text-sm font-bold text-rose-900">Database Error Detected</p>
-            <p className="text-xs text-rose-700 mt-1 font-mono">{error}</p>
+            <p className="text-sm font-black text-rose-500 uppercase tracking-tighter">Database Error Detected</p>
+            <p className="text-xs text-rose-400 mt-1 font-mono">{error}</p>
           </div>
-          <button onClick={() => setError(null)} className="text-rose-400 hover:text-rose-600">
+          <button onClick={() => setError(null)} className="text-rose-500/50 hover:text-rose-500">
             <X size={16} />
           </button>
         </div>
@@ -217,13 +218,13 @@ export default function Inventory() {
       {/* Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
           <input 
             type="text" 
             placeholder="Search by name or code..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+            className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white placeholder:text-slate-700 font-medium"
           />
         </div>
         <button 
@@ -231,86 +232,86 @@ export default function Inventory() {
             setEditingItem(null);
             setIsModalOpen(true);
           }}
-          className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
+          className="flex items-center gap-2 px-6 py-3 bg-[#FFD700] text-[#0a0a0a] rounded-2xl text-sm font-black hover:bg-[#FFD700]/90 transition-all shadow-[0_0_20px_rgba(255,215,0,0.2)] active:scale-95 uppercase tracking-tighter"
         >
           <Plus size={18} />
-          Add Item
+          Register Item
         </button>
       </div>
 
       {/* Inventory Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+      <div className="vault-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Product Details</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Code</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Price</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock (Min Level)</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+              <tr className="bg-white/5 border-b border-white/10">
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Product Details</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Code</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Category</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Cost</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Price</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Stock (Min Level)</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-white/5">
               {filteredItems.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-16 text-center">
                     <div className="max-w-xs mx-auto">
-                      <Package size={40} className="mx-auto text-slate-200 mb-4" />
-                      <p className="text-slate-500 font-medium">No inventory records found.</p>
-                      <p className="text-[10px] text-slate-400 mt-1">Check your Supabase connection or filters.</p>
+                      <Package size={40} className="mx-auto text-slate-800 mb-4" />
+                      <p className="text-slate-500 font-black uppercase tracking-tighter">No inventory records found.</p>
+                      <p className="text-[10px] text-slate-600 mt-1 uppercase">Check your Supabase connection or filters.</p>
                     </div>
                   </td>
                 </tr>
               ) : (
                 filteredItems.map((item) => (
-                  <tr key={item?.id} className="hover:bg-slate-50 transition-colors group">
+                  <tr key={item?.id} className="hover:bg-white/5 transition-colors group">
                     <td className="px-6 py-4">
-                      <span className="font-bold text-slate-900 block">{item?.name || 'Unnamed Product'}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">{item?.id}</span>
+                      <span className="font-bold text-white block group-hover:gold-text transition-colors">{item?.name || 'Unnamed Product'}</span>
+                      <span className="text-[10px] text-slate-600 font-mono">{item?.id}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-600">
+                      <span className="text-[10px] font-mono bg-white/5 px-2 py-1 rounded border border-white/10 text-slate-400">
                         {item?.code || 'N/A'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs font-bold text-slate-700">
+                      <span className="text-xs font-black text-slate-400 uppercase tracking-tighter">
                         {CATEGORY_MAP[item?.category_id] || `ID: ${item?.category_id}`}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm font-medium text-slate-600">
+                      <span className="text-sm font-bold text-slate-500">
                         ${(item?.cost_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm font-black text-blue-600">
+                      <span className="text-sm font-black text-[#FFD700]">
                         ${(item?.selling_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-900">{item?.quantity ?? 0}</span>
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-xs font-black text-white">{item?.quantity ?? 0}</span>
+                        <span className="text-[10px] text-slate-600 font-bold uppercase">
                           (Min: {item?.min_stock_level ?? 5})
                         </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => setEditingItem(item)}
-                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                          className="p-2 text-slate-500 hover:text-[#FFD700] hover:bg-[#FFD700]/10 rounded-xl transition-all"
                           title="Edit Item"
                         >
                           <Edit2 size={16} />
                         </button>
                         <button 
                           onClick={() => handleDelete(item.id)}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                          className="p-2 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
                           title="Delete Item"
                         >
                           <Trash2 size={16} />
@@ -327,19 +328,19 @@ export default function Inventory() {
 
       {/* CRUD Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => {
+        <div className="fixed inset-0 z-[110] flex justify-end">
+          <div className="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-md" onClick={() => {
             setIsModalOpen(false);
             setEditingItem(null);
           }} />
-          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <div className="relative w-full max-w-md bg-[#0a0a0a] border-l border-white/10 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+            <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/5">
               <div>
-                <h2 className="text-xl font-black text-slate-900">
-                  {editingItem ? 'Modify Item' : 'Register New Item'}
+                <h2 className="text-xl font-black text-[#FFD700] uppercase tracking-tighter">
+                  {editingItem ? 'Modify Asset' : 'Register New Asset'}
                 </h2>
                 <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mt-1">
-                  Database Reader/Writer Mode
+                  Vault Entry Protocol
                 </p>
               </div>
               <button 
@@ -347,7 +348,7 @@ export default function Inventory() {
                   setIsModalOpen(false);
                   setEditingItem(null);
                 }} 
-                className="p-2 hover:bg-white rounded-full transition-colors shadow-sm"
+                className="p-2 hover:bg-white/5 rounded-full transition-colors text-slate-500 hover:text-[#FFD700]"
               >
                 <X size={20} />
               </button>
@@ -355,32 +356,32 @@ export default function Inventory() {
             
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Product Name</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Product Name</label>
                 <input 
                   required
                   type="text" 
                   value={formData.name}
                   onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-bold text-white placeholder:text-slate-800"
                   placeholder="Official Product Name"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Database Code (SKU)</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Database Code (SKU)</label>
                 <input 
                   required
                   type="text" 
                   value={formData.code}
                   onChange={e => setFormData({...formData, code: e.target.value})}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-mono text-sm text-white placeholder:text-slate-800"
                   placeholder="UNIQUE_CODE_001"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost Price ($)</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cost Price ($)</label>
                   <input 
                     required
                     type="number" 
@@ -390,11 +391,11 @@ export default function Inventory() {
                       const val = parseFloat(e.target.value);
                       setFormData({...formData, cost_price: isNaN(val) ? 0 : val});
                     }}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-bold text-white"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selling Price ($)</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Selling Price ($)</label>
                   <input 
                     required
                     type="number" 
@@ -404,13 +405,13 @@ export default function Inventory() {
                       const val = parseFloat(e.target.value);
                       setFormData({...formData, selling_price: isNaN(val) ? 0 : val});
                     }}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-600"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-black text-[#FFD700]"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Category Mapping</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Category Mapping</label>
                 <select 
                   required
                   value={formData.category_id}
@@ -422,18 +423,18 @@ export default function Inventory() {
                       category: CATEGORY_MAP[id] || 'Other'
                     });
                   }}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white font-bold text-slate-700"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none appearance-none font-black text-white"
                 >
                   <option value={1}>1 - Oils</option>
                   <option value={2}>2 - Spare Parts</option>
                   <option value={3}>3 - Electrical Spares</option>
                 </select>
-                <p className="text-[10px] text-slate-400 italic">Maps to Integer ID and Text Category in table.</p>
+                <p className="text-[10px] text-slate-600 italic">Maps to Integer ID and Text Category in table.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantity</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quantity</label>
                   <input 
                     required
                     type="number" 
@@ -442,11 +443,11 @@ export default function Inventory() {
                       const val = parseInt(e.target.value);
                       setFormData({...formData, quantity: isNaN(val) ? 0 : val});
                     }}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none text-white font-bold"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min Stock Level</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Min Stock Level</label>
                   <input 
                     required
                     type="number" 
@@ -455,41 +456,41 @@ export default function Inventory() {
                       const val = parseInt(e.target.value);
                       setFormData({...formData, min_stock_level: isNaN(val) ? 0 : val});
                     }}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none text-white font-bold"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10">
                 <input 
                   type="checkbox"
                   id="active-checkbox"
                   checked={formData.active}
                   onChange={e => setFormData({...formData, active: e.target.checked})}
-                  className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  className="w-5 h-5 rounded border-white/10 bg-transparent text-[#FFD700] focus:ring-[#FFD700]"
                 />
-                <label htmlFor="active-checkbox" className="text-sm font-bold text-slate-700 cursor-pointer">
+                <label htmlFor="active-checkbox" className="text-xs font-black text-slate-400 cursor-pointer uppercase tracking-tighter">
                   Active in Inventory
                 </label>
               </div>
             </form>
 
-            <div className="p-8 border-t border-slate-100 bg-slate-50 flex gap-4">
+            <div className="p-8 border-t border-white/10 bg-white/5 flex gap-4">
               <button 
                 type="button"
                 onClick={() => {
                   setIsModalOpen(false);
                   setEditingItem(null);
                 }}
-                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-500 hover:bg-white transition-all"
+                className="flex-1 px-4 py-4 border border-white/10 rounded-2xl text-xs font-black text-slate-500 hover:bg-white/5 transition-all uppercase tracking-tighter"
               >
                 Discard
               </button>
               <button 
                 onClick={handleSubmit}
-                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+                className="flex-1 px-4 py-4 bg-[#FFD700] text-[#0a0a0a] rounded-2xl text-xs font-black hover:bg-[#FFD700]/90 transition-all shadow-[0_0_20px_rgba(255,215,0,0.2)] uppercase tracking-tighter"
               >
-                {editingItem ? 'Commit Update' : 'Commit Insert'}
+                {editingItem ? 'Execute Update' : 'Execute Insert'}
               </button>
             </div>
           </div>

@@ -232,36 +232,37 @@ export default function Sales() {
     <div className="space-y-6">
       {/* Header Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-slate-900 text-white rounded-2xl p-8 flex items-center justify-between shadow-lg border border-slate-800">
-          <div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Total Sales Revenue</p>
-            <h2 className="text-4xl font-black mt-2">
+        <div className="bg-[#050505] border border-white/5 rounded-3xl p-8 flex items-center justify-between shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD700]/5 blur-[60px] rounded-full" />
+          <div className="relative z-10">
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Total Sales Revenue</p>
+            <h2 className="text-4xl font-black mt-2 text-white group-hover:gold-text transition-all">
               ${sales.reduce((acc, s) => acc + (s?.amount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h2>
-            <p className="text-[10px] text-slate-500 mt-2 font-mono">Archive Source: ledger WHERE type='sale'</p>
+            <p className="text-[10px] text-slate-600 mt-2 font-mono uppercase tracking-tighter">Vault Liquidity</p>
           </div>
-          <DollarSign size={48} className="text-slate-800" />
+          <DollarSign size={48} className="text-slate-800 group-hover:text-[#FFD700]/20 transition-colors" />
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 flex items-center justify-between">
+        <div className="vault-card p-8 flex items-center justify-between group">
           <div>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Transaction Count</p>
-            <h2 className="text-4xl font-black mt-2 text-slate-900">
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Transaction Count</p>
+            <h2 className="text-4xl font-black mt-2 text-white group-hover:gold-text transition-all">
               {sales.length}
             </h2>
           </div>
-          <History size={48} className="text-slate-100" />
+          <History size={48} className="text-white/10 group-hover:text-[#FFD700]/20 transition-colors" />
         </div>
       </div>
 
       {/* Error Display */}
       {error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
-          <AlertCircle className="text-rose-600 shrink-0" size={20} />
+        <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 flex items-start gap-3">
+          <AlertCircle className="text-rose-500 shrink-0" size={20} />
           <div className="flex-1">
-            <p className="text-sm font-bold text-rose-900">Operation Error</p>
-            <p className="text-xs text-rose-700 mt-1 font-mono">{error}</p>
+            <p className="text-sm font-black text-rose-500 uppercase tracking-tighter">Operation Error</p>
+            <p className="text-xs text-rose-400 mt-1 font-mono">{error}</p>
           </div>
-          <button onClick={() => setError(null)} className="text-rose-400 hover:text-rose-600">
+          <button onClick={() => setError(null)} className="text-rose-500/50 hover:text-rose-500">
             <X size={16} />
           </button>
         </div>
@@ -270,13 +271,13 @@ export default function Sales() {
       {/* Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
           <input 
             type="text" 
             placeholder="Search sales by product or source..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+            className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white placeholder:text-slate-700 font-medium"
           />
         </div>
       </div>
@@ -284,22 +285,22 @@ export default function Sales() {
       {/* Grouped Sales Display */}
       <div className="space-y-10">
         {groupedSales.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-16 text-center shadow-sm">
+          <div className="vault-card p-16 text-center">
             <div className="max-w-xs mx-auto">
-              <History size={40} className="mx-auto text-slate-200 mb-4" />
-              <p className="text-slate-500 font-medium">No sales records found.</p>
+              <History size={40} className="mx-auto text-slate-800 mb-4" />
+              <p className="text-slate-500 font-black uppercase tracking-tighter">No sales records found.</p>
             </div>
           </div>
         ) : (
           groupedSales.map((dateGroup) => (
             <div key={dateGroup.date} className="space-y-4">
               <div className="flex items-center gap-4">
-                <div className="h-px flex-1 bg-slate-200" />
-                <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-100 rounded-full border border-slate-200">
-                  <Calendar size={14} className="text-slate-500" />
-                  <span className="text-xs font-black text-slate-600 uppercase tracking-widest">{dateGroup.date}</span>
+                <div className="h-px flex-1 bg-white/5" />
+                <div className="flex items-center gap-2 px-4 py-1.5 bg-white/5 rounded-full border border-white/10">
+                  <Calendar size={14} className="text-[#FFD700]" />
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{dateGroup.date}</span>
                 </div>
-                <div className="h-px flex-1 bg-slate-200" />
+                <div className="h-px flex-1 bg-white/5" />
               </div>
 
               <div className="grid grid-cols-1 gap-4">
@@ -309,39 +310,39 @@ export default function Sales() {
                   const isReversing = reversingTransactionId === firstItem.id;
 
                   return (
-                    <div key={transaction.timestamp} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group">
+                    <div key={transaction.timestamp} className="vault-card overflow-hidden group hover:gold-glow transition-all duration-300">
                       {/* Transaction Header */}
-                      <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="bg-white/5 px-6 py-4 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
+                          <div className="w-10 h-10 bg-[#FFD700] rounded-xl flex items-center justify-center text-[#0a0a0a] shadow-[0_0_20px_rgba(255,215,0,0.2)]">
                             <ShoppingCart size={20} />
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-black text-slate-900">
+                              <span className="text-sm font-black text-white uppercase tracking-tighter">
                                 Sale @ {new Date(transaction.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                               </span>
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-200 px-2 py-0.5 rounded">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-[#FFD700] bg-[#FFD700]/10 border border-[#FFD700]/20 px-2 py-0.5 rounded-full">
                                 {firstItem.fund_source}
                               </span>
                             </div>
-                            <p className="text-[10px] text-slate-500 font-mono mt-0.5">ID: {transaction.timestamp.split('-').pop()}</p>
+                            <p className="text-[10px] text-slate-600 font-mono mt-0.5">ID: {transaction.timestamp.split('-').pop()}</p>
                           </div>
                         </div>
                         
                         <div className="flex items-center gap-6">
                           <div className="text-right">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Amount</p>
-                            <p className="text-xl font-black text-blue-600">${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Total Amount</p>
+                            <p className="text-xl font-black text-[#FFD700]">${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                           </div>
                           <button 
                             disabled={isReversing}
                             onClick={() => handleReverseTransaction(transaction.items)}
                             className={cn(
-                              "p-2.5 rounded-xl transition-all flex items-center gap-2 text-xs font-bold",
+                              "p-2.5 rounded-xl transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-tighter",
                               isReversing 
-                                ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
-                                : "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                                ? "bg-white/5 text-slate-600 cursor-not-allowed" 
+                                : "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/20"
                             )}
                           >
                             {isReversing ? (
@@ -357,16 +358,16 @@ export default function Sales() {
                       </div>
 
                       {/* Transaction Items */}
-                      <div className="divide-y divide-slate-100">
+                      <div className="divide-y divide-white/5">
                         {transaction.items.map((item) => (
-                          <div key={item.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors">
+                          <div key={item.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/5 transition-colors">
                             <div className="flex items-center gap-4">
-                              <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                              <div className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center text-slate-600 border border-white/5">
                                 <Package size={16} />
                               </div>
                               <div>
-                                <p className="text-sm font-bold text-slate-900">{item.inventory?.name || item.description || 'Unknown Item'}</p>
-                                <p className="text-xs text-slate-500">Quantity: <span className="font-bold text-slate-700">{item.quantity || 1}</span></p>
+                                <p className="text-sm font-bold text-white group-hover:gold-text transition-colors">{item.inventory?.name || item.description || 'Unknown Item'}</p>
+                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-tighter">Quantity: <span className="text-white">{item.quantity || 1}</span></p>
                               </div>
                             </div>
 
@@ -381,19 +382,19 @@ export default function Sales() {
                                         const val = parseFloat(e.target.value);
                                         setEditAmount(isNaN(val) ? 0 : val);
                                       }}
-                                      className="w-20 px-2 py-1 border border-blue-500 rounded text-xs outline-none"
+                                      className="w-20 px-2 py-1 bg-white/5 border border-[#FFD700]/50 rounded text-xs outline-none text-white font-bold"
                                       autoFocus
                                     />
-                                    <button onClick={() => handleUpdateAmount(item)} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded">
+                                    <button onClick={() => handleUpdateAmount(item)} className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded">
                                       <Check size={14} />
                                     </button>
-                                    <button onClick={() => setEditingId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded">
+                                    <button onClick={() => setEditingId(null)} className="p-1 text-slate-500 hover:bg-white/5 rounded">
                                       <X size={14} />
                                     </button>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2 justify-end group/item">
-                                    <span className="text-sm font-bold text-slate-700">
+                                    <span className="text-sm font-black text-white">
                                       ${(item?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </span>
                                     <button 
@@ -401,7 +402,7 @@ export default function Sales() {
                                         setEditingId(item.id);
                                         setEditAmount(item.amount);
                                       }}
-                                      className="p-1 text-slate-300 hover:text-blue-600 opacity-0 group-hover/item:opacity-100 transition-all"
+                                      className="p-1 text-slate-700 hover:text-[#FFD700] opacity-0 group-hover/item:opacity-100 transition-all"
                                     >
                                       <Edit3 size={14} />
                                     </button>
@@ -413,7 +414,7 @@ export default function Sales() {
                                 disabled={reversingId === item.id}
                                 onClick={() => handleReverseSale(item)}
                                 className={cn(
-                                  "p-1.5 rounded-lg transition-all text-slate-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100",
+                                  "p-1.5 rounded-lg transition-all text-slate-700 hover:text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100",
                                   reversingId === item.id && "opacity-100"
                                 )}
                                 title="Reverse Item"
