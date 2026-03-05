@@ -9,36 +9,65 @@
 }
 
 @layer base {
-  body {
-    @apply font-sans antialiased bg-[#0a0a0a] text-white;
+  :root {
+    --bg-primary: #0a0a0a;
+    --bg-secondary: #050505;
+    --bg-card: rgba(255, 255, 255, 0.05);
+    --text-primary: #ffffff;
+    --text-secondary: #64748b;
+    --accent: #FFD700;
+    --border: rgba(255, 255, 255, 0.05);
+    --border-hover: rgba(255, 215, 0, 0.2);
   }
 
-  /* Custom Scrollbar for Dark Theme */
+  .theme-light {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-card: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #64748b;
+    --accent: #1a1a1a;
+    --border: #e2e8f0;
+    --border-hover: #cbd5e1;
+  }
+
+  body {
+    @apply font-sans antialiased transition-colors duration-500;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  /* Custom Scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
   }
   ::-webkit-scrollbar-track {
-    background: #0a0a0a;
+    background: var(--bg-primary);
   }
   ::-webkit-scrollbar-thumb {
-    background: #1a1a1a;
+    background: var(--bg-secondary);
     border-radius: 10px;
+    border: 2px solid var(--bg-primary);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #2a2a2a;
+    background: var(--text-secondary);
   }
 }
 
 @layer components {
   .gold-glow {
-    @apply shadow-[0_0_15px_rgba(255,215,0,0.15)] border-[#FFD700]/20;
+    @apply shadow-[0_0_15px_rgba(255,215,0,0.15)];
+    border-color: var(--border-hover);
   }
   
   .gold-text {
-    @apply text-[#FFD700] drop-shadow-[0_0_8px_rgba(255,215,0,0.3)];
+    color: var(--accent);
+    @apply drop-shadow-[0_0_8px_rgba(255,215,0,0.3)];
   }
 
   .vault-card {
-    @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl;
+    background-color: var(--bg-card);
+    @apply backdrop-blur-xl border rounded-3xl transition-all duration-300;
+    border-color: var(--border);
   }
 }

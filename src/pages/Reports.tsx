@@ -134,6 +134,28 @@ export default function Reports() {
     };
   }, [summaries, inventory, ledger]);
 
+  const handlePartnerAChange = (val: number) => {
+    const newA = Math.max(0, Math.min(100, val));
+    setPartnerA(newA);
+    // Auto-adjust reinvestment to keep total 100 if possible, or just let user fix it
+    const remaining = 100 - newA - partnerB;
+    setReinvestment(Math.max(0, remaining));
+  };
+
+  const handlePartnerBChange = (val: number) => {
+    const newB = Math.max(0, Math.min(100, val));
+    setPartnerB(newB);
+    const remaining = 100 - partnerA - newB;
+    setReinvestment(Math.max(0, remaining));
+  };
+
+  const handleReinvestmentChange = (val: number) => {
+    const newR = Math.max(0, Math.min(100, val));
+    setReinvestment(newR);
+    const remaining = 100 - partnerA - newR;
+    // This one is trickier, maybe just let user adjust
+  };
+
   const distributionData = useMemo(() => {
     if (!analytics) return [];
     return [
@@ -151,16 +173,21 @@ export default function Reports() {
       
       // Header
       doc.setFontSize(22);
-      doc.setTextColor(15, 23, 42); 
+      doc.setTextColor(10, 10, 10); // Dark Charcoal
       doc.text('Executive Financial Position Report', 14, 22);
       
       doc.setFontSize(10);
       doc.setTextColor(100);
       doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
 
+      // Gold Accent Line
+      doc.setDrawColor(255, 215, 0);
+      doc.setLineWidth(1);
+      doc.line(14, 35, 196, 35);
+
       // Financial Positions Section
       doc.setFontSize(16);
-      doc.setTextColor(15, 23, 42);
+      doc.setTextColor(10, 10, 10);
       doc.text('1. Financial Positions & Performance', 14, 45);
       
       autoTable(doc, {
@@ -175,7 +202,7 @@ export default function Reports() {
           ['Sales Velocity (30d)', `${analytics.salesVelocity.toFixed(2)} sales/day`],
         ],
         theme: 'striped',
-        headStyles: { fillColor: [15, 23, 42] }
+        headStyles: { fillColor: [10, 10, 10], textColor: [255, 215, 0] }
       });
 
       // 2. Distribution Plan
@@ -554,7 +581,7 @@ export default function Reports() {
                   <input 
                     type="number" 
                     value={partnerA}
-                    onChange={(e) => setPartnerA(Math.max(0, parseInt(e.target.value) || 0))}
+                    onChange={(e) => handlePartnerAChange(parseInt(e.target.value) || 0)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-black text-white focus:border-[#FFD700]/50 outline-none transition-all"
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 font-black">%</div>
@@ -572,7 +599,7 @@ export default function Reports() {
                   <input 
                     type="number" 
                     value={partnerB}
-                    onChange={(e) => setPartnerB(Math.max(0, parseInt(e.target.value) || 0))}
+                    onChange={(e) => handlePartnerBChange(parseInt(e.target.value) || 0)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-black text-white focus:border-[#FFD700]/50 outline-none transition-all"
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 font-black">%</div>

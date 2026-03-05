@@ -13,20 +13,21 @@ export default function PinGuard({ children, protectedPages, activePage }: PinGu
   const [pin, setPin] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [error, setError] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
 
-  // The Golden PIN
-  const MASTER_PIN = '7007';
+  // The Golden PIN from env or default
+  const MASTER_PIN = import.meta.env.VITE_MANAGER_PIN || '7007';
 
   useEffect(() => {
-    // Check session storage on mount and when activePage changes
-    const unlocked = sessionStorage.getItem('manager_vault_unlocked') === 'true';
-    setIsUnlocked(unlocked);
-    
-    // Reset PIN if switching away from protected page (optional, but safer)
+    // Volatile Session: Immediately lock when leaving a protected page
     if (!protectedPages.includes(activePage)) {
+      setIsUnlocked(false);
+      sessionStorage.removeItem('manager_vault_unlocked');
       setPin('');
       setError(false);
+    } else {
+      // Check if already unlocked in this session
+      const unlocked = sessionStorage.getItem('manager_vault_unlocked') === 'true';
+      setIsUnlocked(unlocked);
     }
   }, [activePage, protectedPages]);
 
@@ -51,7 +52,6 @@ export default function PinGuard({ children, protectedPages, activePage }: PinGu
     } else {
       setError(true);
       setPin('');
-      // Shake animation effect handled by framer motion
     }
   };
 
@@ -68,81 +68,105 @@ export default function PinGuard({ children, protectedPages, activePage }: PinGu
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex flex-col items-center justify-center p-4">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] bg-[#0a0a0a] flex flex-col items-center justify-center p-4 overflow-hidden"
+    >
       {/* Background Glows */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#FFD700]/5 blur-[120px] rounded-full" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#FFD700]/5 blur-[120px] rounded-full" />
+      <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-[#FFD700]/10 blur-[150px] rounded-full animate-pulse" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-[#FFD700]/10 blur-[150px] rounded-full animate-pulse delay-1000" />
 
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: "spring", damping: 25, stiffness: 200 }}
         className="w-full max-w-md relative z-10"
       >
         <div className="text-center mb-12">
           <motion.div 
-            animate={error ? { x: [-10, 10, -10, 10, 0] } : {}}
+            animate={error ? { x: [-10, 10, -10, 10, 0], scale: [1, 1.1, 1] } : {}}
             className={cn(
-              "inline-flex items-center justify-center w-20 h-20 rounded-3xl mb-6 border-2 transition-all duration-500",
-              error ? "border-red-500 bg-red-500/10 text-red-500" : "border-[#FFD700]/30 bg-[#FFD700]/5 text-[#FFD700]"
+              "inline-flex items-center justify-center w-24 h-24 rounded-[2.5rem] mb-8 border-2 transition-all duration-500 shadow-2xl",
+              error 
+                ? "border-red-500 bg-red-500/10 text-red-500 shadow-red-500/20" 
+                : "border-[#FFD700]/30 bg-[#FFD700]/5 text-[#FFD700] shadow-[#FFD700]/20"
             )}
           >
-            {error ? <ShieldAlert size={40} /> : <Lock size={40} />}
+            {error ? <ShieldAlert size={48} /> : <Lock size={48} />}
           </motion.div>
-          <h1 className="text-3xl font-black text-[#FFD700] tracking-tighter uppercase">Manager Vault</h1>
-          <p className="text-slate-500 mt-2 text-sm font-medium">Restricted Area. Enter 4-digit Authorization PIN.</p>
+          <h1 className="text-4xl font-black text-[#FFD700] tracking-tighter uppercase drop-shadow-[0_0_15px_rgba(255,215,0,0.5)]">Manager Vault</h1>
+          <p className="text-slate-500 mt-3 text-sm font-black uppercase tracking-widest opacity-80">Restricted Access • Authorization Required</p>
         </div>
 
         {/* PIN Indicators */}
-        <div className="flex justify-center gap-4 mb-12">
+        <div className="flex justify-center gap-6 mb-16">
           {[0, 1, 2, 3].map((i) => (
-            <div 
+            <motion.div 
               key={i}
+              initial={false}
+              animate={{
+                scale: pin.length > i ? 1.2 : 1,
+                backgroundColor: pin.length > i ? "#FFD700" : "transparent"
+              }}
               className={cn(
-                "w-4 h-4 rounded-full border-2 transition-all duration-300",
+                "w-5 h-5 rounded-full border-2 transition-all duration-300",
                 pin.length > i 
-                  ? "bg-[#FFD700] border-[#FFD700] shadow-[0_0_15px_rgba(255,215,0,0.5)]" 
-                  : "border-slate-800 bg-transparent"
+                  ? "border-[#FFD700] shadow-[0_0_20px_rgba(255,215,0,0.8)]" 
+                  : "border-slate-800"
               )}
             />
           ))}
         </div>
 
         {/* Numeric Keypad */}
-        <div className="grid grid-cols-3 gap-4 max-w-[320px] mx-auto">
+        <div className="grid grid-cols-3 gap-6 max-w-[360px] mx-auto">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
             <button
               key={num}
               onClick={() => handleNumberClick(num)}
-              className="aspect-square flex items-center justify-center text-2xl font-black text-white bg-white/5 border border-white/10 rounded-2xl hover:bg-[#FFD700]/10 hover:border-[#FFD700]/50 hover:text-[#FFD700] transition-all active:scale-90 group"
+              className="aspect-square flex flex-col items-center justify-center bg-white/5 border border-white/10 rounded-[2rem] hover:bg-[#FFD700]/10 hover:border-[#FFD700]/50 hover:text-[#FFD700] transition-all active:scale-90 group relative overflow-hidden"
             >
-              <span className="group-hover:drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]">{num}</span>
+              <span className="text-3xl font-black text-white group-hover:text-[#FFD700] transition-colors z-10">{num}</span>
+              <div className="absolute inset-0 bg-gradient-to-br from-[#FFD700]/0 to-[#FFD700]/5 opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           ))}
           <div />
           <button
             onClick={() => handleNumberClick('0')}
-            className="aspect-square flex items-center justify-center text-2xl font-black text-white bg-white/5 border border-white/10 rounded-2xl hover:bg-[#FFD700]/10 hover:border-[#FFD700]/50 hover:text-[#FFD700] transition-all active:scale-90 group"
+            className="aspect-square flex flex-col items-center justify-center bg-white/5 border border-white/10 rounded-[2rem] hover:bg-[#FFD700]/10 hover:border-[#FFD700]/50 hover:text-[#FFD700] transition-all active:scale-90 group relative overflow-hidden"
           >
-            <span className="group-hover:drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]">0</span>
+            <span className="text-3xl font-black text-white group-hover:text-[#FFD700] transition-colors z-10">0</span>
+            <div className="absolute inset-0 bg-gradient-to-br from-[#FFD700]/0 to-[#FFD700]/5 opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
           <button
             onClick={handleDelete}
-            className="aspect-square flex items-center justify-center text-white bg-white/5 border border-white/10 rounded-2xl hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-500 transition-all active:scale-90"
+            className="aspect-square flex items-center justify-center text-slate-500 bg-white/5 border border-white/10 rounded-[2rem] hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-500 transition-all active:scale-90"
           >
-            <Delete size={24} />
+            <Delete size={32} />
           </button>
         </div>
 
-        {error && (
-          <motion.p 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center text-red-500 text-xs font-bold mt-8 uppercase tracking-widest"
-          >
-            Invalid Authorization PIN
-          </motion.p>
-        )}
+        <AnimatePresence>
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-center mt-12"
+            >
+              <span className="px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-full text-red-500 text-[10px] font-black uppercase tracking-[0.2em]">
+                Invalid Authorization PIN
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
-    </div>
+      
+      <div className="absolute bottom-8 text-[10px] font-black text-slate-700 uppercase tracking-[0.3em]">
+        Secure RetailOS Terminal v4.0
+      </div>
+    </motion.div>
   );
 }

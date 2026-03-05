@@ -23,6 +23,7 @@ import Reports from './pages/Reports';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import PinGuard from './components/PinGuard';
+import ThemeSwitcher from './components/ThemeSwitcher';
 
 type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports';
 
@@ -32,6 +33,25 @@ export default function App() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  useEffect(() => {
+    // Load theme from localStorage
+    const savedTheme = localStorage.getItem('retailos_theme') as 'dark' | 'light';
+    if (savedTheme) {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Apply theme class to body
+    if (theme === 'light') {
+      document.body.classList.add('theme-light');
+    } else {
+      document.body.classList.remove('theme-light');
+    }
+    localStorage.setItem('retailos_theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     // Check initial session
@@ -120,7 +140,7 @@ export default function App() {
           </button>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2 mt-4">
+        <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => (
             <button
               key={item.id}
@@ -141,6 +161,10 @@ export default function App() {
               )}
             </button>
           ))}
+          
+          <div className="pt-6 pb-2">
+            <ThemeSwitcher theme={theme} setTheme={setTheme} isSidebarOpen={isSidebarOpen} />
+          </div>
         </nav>
 
         <div className="p-6 border-t border-white/5 space-y-4">
