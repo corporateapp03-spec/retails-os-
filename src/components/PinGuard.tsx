@@ -18,18 +18,11 @@ export default function PinGuard({ children, protectedPages, activePage }: PinGu
   const MASTER_PIN = import.meta.env.VITE_MANAGER_PIN || '7007';
 
   useEffect(() => {
-    // Volatile Session: Immediately lock when leaving a protected page
-    if (!protectedPages.includes(activePage)) {
-      setIsUnlocked(false);
-      sessionStorage.removeItem('manager_vault_unlocked');
-      setPin('');
-      setError(false);
-    } else {
-      // Check if already unlocked in this session
-      const unlocked = sessionStorage.getItem('manager_vault_unlocked') === 'true';
-      setIsUnlocked(unlocked);
-    }
-  }, [activePage, protectedPages]);
+    // Volatile Security: Reset unlock status on every page change
+    setIsUnlocked(false);
+    setPin('');
+    setError(false);
+  }, [activePage]);
 
   const handleNumberClick = (num: string) => {
     if (pin.length < 4) {
@@ -46,7 +39,6 @@ export default function PinGuard({ children, protectedPages, activePage }: PinGu
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (pin === MASTER_PIN) {
-      sessionStorage.setItem('manager_vault_unlocked', 'true');
       setIsUnlocked(true);
       setPin('');
     } else {

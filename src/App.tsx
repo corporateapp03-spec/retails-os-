@@ -10,7 +10,8 @@ import {
   ShieldCheck,
   BarChart3,
   LogOut,
-  User
+  User,
+  TrendingUp
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { supabase } from './lib/supabase';
@@ -25,7 +26,7 @@ import ResetPassword from './pages/ResetPassword';
 import PinGuard from './components/PinGuard';
 import ThemeSwitcher from './components/ThemeSwitcher';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports' | 'projection';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -117,6 +118,7 @@ export default function App() {
     { id: 'sales', label: 'Sales Archive', icon: History },
     { id: 'outflow', label: 'Outflow Guardian', icon: ShieldCheck },
     { id: 'reports', label: 'Executive Intel', icon: BarChart3 },
+    { id: 'projection', label: 'Projections', icon: TrendingUp },
   ];
 
   return (
@@ -219,13 +221,14 @@ export default function App() {
           <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
           
           <div className="relative z-10">
-            <PinGuard protectedPages={['outflow', 'reports', 'inventory']} activePage={activePage}>
+            <PinGuard protectedPages={['dashboard', 'outflow', 'reports', 'projection']} activePage={activePage}>
               {activePage === 'dashboard' && <Dashboard />}
               {activePage === 'inventory' && <Inventory />}
               {activePage === 'pos' && <POS />}
               {activePage === 'sales' && <Sales />}
               {activePage === 'outflow' && <Outflow />}
               {activePage === 'reports' && <Reports />}
+              {activePage === 'projection' && <Reports />}
             </PinGuard>
           </div>
         </div>
