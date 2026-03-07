@@ -78,23 +78,28 @@ export default function POS() {
     setIsSyncing(false);
   }
 
+  // Debounced Search Logic
   useEffect(() => {
-    if (searchTerm.length > 0) {
-      searchItems();
-    } else {
-      setSearchResults([]);
-    }
+    const timer = setTimeout(() => {
+      if (searchTerm.length > 0) {
+        searchItems();
+      } else {
+        setSearchResults([]);
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
   }, [searchTerm]);
 
   async function searchItems() {
-    if (!isOnline) return; // Search requires online for now
+    if (!isOnline) return;
     try {
       const { data: items, error: itemsError } = await supabase
         .from('inventory')
         .select('*')
         .or(`name.ilike.%${searchTerm}%,code.ilike.%${searchTerm}%`)
         .eq('active', true)
-        .limit(8);
+        .limit(20); // Increased limit for better search experience
       
       if (itemsError) throw itemsError;
       setSearchResults(items || []);
@@ -251,7 +256,7 @@ export default function POS() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full relative">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[calc(100vh-160px)] relative overflow-hidden">
       {/* Syncing Indicator */}
       {(isSyncing || queuedSales.length > 0) && (
         <div className="fixed bottom-8 right-8 z-50 flex items-center gap-3 bg-[#FFD700] text-[#0a0a0a] px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(255,215,0,0.4)] animate-bounce">
@@ -263,8 +268,8 @@ export default function POS() {
       )}
 
       {/* Left Column: Search & Items (7/12) */}
-      <div className="lg:col-span-7 space-y-6 flex flex-col h-full">
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-sm">
+      <div className="lg:col-span-7 space-y-6 flex flex-col h-full overflow-y-auto pr-2 custom-scrollbar">
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-sm sticky top-0 z-30">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-black text-[#FFD700] flex items-center gap-3 uppercase tracking-tighter">
               <Search size={24} />
@@ -289,57 +294,59 @@ export default function POS() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               disabled={!isOnline}
-              className="w-full pl-6 pr-6 py-5 bg-white/5 border-2 border-white/10 rounded-2xl focus:border-[#FFD700]/50 focus:ring-4 focus:ring-[#FFD700]/5 outline-none transition-all text-xl font-bold placeholder:text-slate-700 text-white disabled:opacity-50"
+              className="w-full pl-6 pr-6 py-5 bg-white/5 border-2 border-white/10 rounded-2xl focus:border-[#FFD700]/50 focus:ring-4 focus:ring-[#FFD700]/5 outline-none transition-all text-xl font-bold placeholder:text-slate-700 text-white disabled:opacity-50 shadow-[0_0_20px_rgba(255,215,0,0.05)]"
               autoFocus
             />
             
             {searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-3 bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-2xl z-20 overflow-hidden animate-in fade-in slide-in-from-top-2">
-                <div className="p-2 bg-white/5 border-b border-white/10 text-[10px] font-black text-slate-500 uppercase tracking-widest px-4">
-                  Search Results
+              <div className="absolute top-full left-0 right-0 mt-3 bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-2xl z-20 overflow-hidden animate-in fade-in slide-in-from-top-2 max-h-[60vh] flex flex-col">
+                <div className="p-2 bg-white/5 border-b border-white/10 text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 shrink-0">
+                  Search Results ({searchResults.length})
                 </div>
-                {searchResults.map(item => (
-                  <button
-                    key={item.id}
-                    disabled={item.quantity <= 0}
-                    onClick={() => addToCart(item)}
-                    className={cn(
-                      "w-full flex items-center justify-between p-5 transition-all text-left border-b border-white/5 last:border-0",
-                      item.quantity <= 0 ? "opacity-30 cursor-not-allowed grayscale" : "hover:bg-[#FFD700]/10"
-                    )}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={cn(
-                        "w-12 h-12 rounded-xl flex items-center justify-center",
-                        item.quantity > 0 ? "bg-[#FFD700]/10 text-[#FFD700]" : "bg-white/5 text-slate-600"
-                      )}>
-                        <Package size={24} />
+                <div className="overflow-y-auto custom-scrollbar">
+                  {searchResults.map(item => (
+                    <button
+                      key={item.id}
+                      disabled={item.quantity <= 0}
+                      onClick={() => addToCart(item)}
+                      className={cn(
+                        "w-full flex items-center justify-between p-5 transition-all text-left border-b border-white/5 last:border-0",
+                        item.quantity <= 0 ? "opacity-30 cursor-not-allowed grayscale" : "hover:bg-[#FFD700]/10"
+                      )}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={cn(
+                          "w-12 h-12 rounded-xl flex items-center justify-center",
+                          item.quantity > 0 ? "bg-[#FFD700]/10 text-[#FFD700]" : "bg-white/5 text-slate-600"
+                        )}>
+                          <Package size={24} />
+                        </div>
+                        <div>
+                          <p className="font-black text-white">{item.name}</p>
+                          <p className="text-xs text-slate-500 font-medium">
+                            {item.code} • {CATEGORY_MAP[item.category_id] || item.category}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-black text-white">{item.name}</p>
-                        <p className="text-xs text-slate-500 font-medium">
-                          {item.code} • {CATEGORY_MAP[item.category_id] || item.category}
+                      <div className="text-right">
+                        <p className="font-black text-[#FFD700] text-lg">${(item.selling_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        <p className={cn(
+                          "text-[10px] font-bold uppercase tracking-widest",
+                          item.quantity > 5 ? "text-emerald-500" : "text-rose-500"
+                        )}>
+                          Stock: {item.quantity}
                         </p>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-black text-[#FFD700] text-lg">${(item.selling_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                      <p className={cn(
-                        "text-[10px] font-bold uppercase tracking-widest",
-                        item.quantity > 5 ? "text-emerald-500" : "text-rose-500"
-                      )}>
-                        Stock: {item.quantity}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {/* Quick Access Grid */}
-        <div className="flex-1 bg-white/5 rounded-3xl border-2 border-dashed border-white/10 p-8 flex flex-col items-center justify-center text-slate-600 text-center">
+        <div className="bg-white/5 rounded-3xl border-2 border-dashed border-white/10 p-8 flex flex-col items-center justify-center text-slate-600 text-center min-h-[200px]">
           <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center shadow-sm mb-4 border border-white/10">
             <TrendingUp size={32} className="text-[#FFD700] opacity-20" />
           </div>
@@ -349,7 +356,7 @@ export default function POS() {
       </div>
 
       {/* Right Column: Cart & Checkout (5/12) */}
-      <div className="lg:col-span-5 flex flex-col gap-6 h-full">
+      <div className="lg:col-span-5 flex flex-col gap-6 h-full overflow-hidden">
         {/* Cart Card */}
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl shadow-sm flex flex-col overflow-hidden flex-1">
           <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/5">
