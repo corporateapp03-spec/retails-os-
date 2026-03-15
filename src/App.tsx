@@ -21,12 +21,13 @@ import POS from './pages/POS';
 import Sales from './pages/Sales';
 import Outflow from './pages/Outflow';
 import Reports from './pages/Reports';
+import Dashboards from './pages/Dashboards';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import PinGuard from './components/PinGuard';
 import ThemeSwitcher from './components/ThemeSwitcher';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports' | 'projection';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports' | 'projection' | 'dashboards';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -113,6 +114,7 @@ export default function App() {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'dashboards', label: 'Dashboards', icon: BarChart3 },
     { id: 'inventory', label: 'Inventory', icon: Package },
     { id: 'pos', label: 'POS', icon: ShoppingCart },
     { id: 'sales', label: 'Sales Archive', icon: History },
@@ -221,8 +223,9 @@ export default function App() {
           <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
           
           <div className="relative z-10">
-            <PinGuard protectedPages={['dashboard', 'outflow', 'reports', 'projection', 'sales']} activePage={activePage}>
+            <PinGuard protectedPages={['dashboard', 'outflow', 'reports', 'projection', 'sales', 'dashboards']} activePage={activePage}>
               {activePage === 'dashboard' && <Dashboard />}
+              {activePage === 'dashboards' && <Dashboards />}
               {activePage === 'inventory' && <Inventory />}
               {activePage === 'pos' && <POS />}
               {activePage === 'sales' && <Sales />}
