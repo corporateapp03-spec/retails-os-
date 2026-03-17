@@ -90,6 +90,54 @@ export default function Reports() {
     const recentSales = salesEntries.filter(l => new Date(l.created_at) > thirtyDaysAgo);
     const salesVelocity = recentSales.length / 30;
 
+    // 1. Marketing: Demand Velocity (Trending Categories)
+    const categoryVelocity: Record<string, number> = {};
+    recentSales.forEach(sale => {
+      const item = inventory.find(i => i.id === sale.inventory_item_id);
+      const cat = item?.category || 'Uncategorized';
+      categoryVelocity[cat] = (categoryVelocity[cat] || 0) + (sale.quantity || 1);
+    });
+    const demandVelocity = Object.entries(categoryVelocity)
+      .map(([name, velocity]) => ({ name, velocity }))
+      .sort((a, b) => b.velocity - a.velocity)
+      .slice(0, 5);
+
+    // 2. Financial: Revenue vs Cost + Profit Margin
+    const totalCostOfGoodsSold = salesEntries.reduce((acc, sale) => {
+      const item = inventory.find(i => i.id === sale.inventory_item_id);
+      return acc + ((item?.cost_price || 0) * (sale.quantity || 1));
+    }, 0);
+    const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalCostOfGoodsSold) / totalRevenue) * 100 : 0;
+
+    // 3. Operations: Operational Load (Transactions per day)
+    const dailyLoad: Record<string, number> = {};
+    recentSales.forEach(sale => {
+      const date = new Date(sale.created_at).toISOString().split('T')[0];
+      dailyLoad[date] = (dailyLoad[date] || 0) + 1;
+    });
+    const operationalLoad = Object.values(dailyLoad).reduce((acc, count) => acc + count, 0) / 30;
+
+    // 4. Support: Refund/Return Proxy
+    const refundEntries = ledger.filter(l => 
+      l.transaction_type === 'expense' && 
+      (l.description?.toLowerCase().includes('refund') || l.description?.toLowerCase().includes('return'))
+    );
+    const refundCount = refundEntries.length;
+
+    // 5. Executive: Growth Rate
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const previousPeriodSales = salesEntries.filter(l => {
+      const d = new Date(l.created_at);
+      return d > sixtyDaysAgo && d <= thirtyDaysAgo;
+    });
+    const currentPeriodRevenue = recentSales.reduce((acc, s) => acc + (s.amount || 0), 0);
+    const previousPeriodRevenue = previousPeriodSales.reduce((acc, s) => acc + (s.amount || 0), 0);
+    const growthRate = previousPeriodRevenue > 0 ? ((currentPeriodRevenue - previousPeriodRevenue) / previousPeriodRevenue) * 100 : 0;
+
+    // 6. Executive: Total Asset Valuation
+    const totalAssetValuation = assetValuation + netProfit;
+
     const itemSalesCount: Record<string, number> = {};
     salesEntries.forEach(s => {
       if (s.inventory_item_id) {
@@ -120,19 +168,26 @@ export default function Reports() {
     const deadStockValue = deadStock.reduce((acc, item) => acc + (item.cost_price * item.quantity), 0);
     const deadStockRatio = assetValuation > 0 ? (deadStockValue / assetValuation) : 0;
 
-    return {
-      totalRevenue,
-      totalExpenses,
-      netProfit,
-      assetValuation,
-      cashOnHand,
-      fastMoving,
-      deadStock,
-      deadStockValue,
-      deadStockRatio,
-      salesVelocity
-    };
-  }, [summaries, inventory, ledger]);
+      return {
+        totalRevenue,
+        totalExpenses,
+        netProfit,
+        assetValuation,
+        cashOnHand,
+        fastMoving,
+        deadStock,
+        deadStockValue,
+        deadStockRatio,
+        salesVelocity,
+        demandVelocity,
+        totalCostOfGoodsSold,
+        profitMargin,
+        operationalLoad,
+        refundCount,
+        growthRate,
+        totalAssetValuation
+      };
+    }, [summaries, inventory, ledger]);
 
   const handlePartnerAChange = (val: number) => {
     const newA = Math.max(0, Math.min(100, val));
@@ -198,15 +253,38 @@ export default function Reports() {
           ['Total Expenses', `$${analytics.totalExpenses.toLocaleString()}`],
           ['Net Profit (Summary Pool)', `$${analytics.netProfit.toLocaleString()}`],
           ['Cash on Hand (Liquidity)', `$${analytics.cashOnHand.toLocaleString()}`],
-          ['Total Asset Valuation (Inventory)', `$${analytics.assetValuation.toLocaleString()}`],
+          ['Total Asset Valuation (Combined)', `$${analytics.totalAssetValuation.toLocaleString()}`],
+          ['Profit Margin', `${analytics.profitMargin.toFixed(1)}%`],
           ['Sales Velocity (30d)', `${analytics.salesVelocity.toFixed(2)} sales/day`],
+          ['Growth Rate (MoM)', `${analytics.growthRate.toFixed(1)}%`],
+          ['Refund/Return Count', `${analytics.refundCount}`],
         ],
         theme: 'striped',
         headStyles: { fillColor: [10, 10, 10], textColor: [255, 215, 0] }
       });
 
+      // 1.5 Strategic Intelligence
+      let finalY0 = (doc as any).lastAutoTable.finalY;
+      doc.setFontSize(16);
+      doc.text('1.5 Strategic Intelligence Modules', 14, finalY0 + 15);
+      
+      autoTable(doc, {
+        startY: finalY0 + 20,
+        head: [['Module', 'Key Insight', 'Metric']],
+        body: [
+          ['Marketing', 'Demand Velocity (Top Category)', analytics.demandVelocity[0]?.name || 'N/A'],
+          ['Operations', 'Operational Load', `${analytics.operationalLoad.toFixed(2)} tx/day`],
+          ['Operations', 'Dead Stock Value', `$${analytics.deadStockValue.toLocaleString()}`],
+          ['Support', 'Return Proxy Count', analytics.refundCount.toString()],
+          ['Executive', 'Growth Rate', `${analytics.growthRate.toFixed(1)}%`],
+          ['Executive', 'Total Asset Valuation', `$${analytics.totalAssetValuation.toLocaleString()}`],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [255, 215, 0], textColor: [0, 0, 0] }
+      });
+
       // 2. Distribution Plan
-      let finalY = (doc as any).lastAutoTable.finalY;
+      let finalY = (doc as any).lastAutoTable.lastAutoTable ? (doc as any).lastAutoTable.finalY : (doc as any).lastAutoTable.finalY;
       doc.setFontSize(16);
       doc.text('2. Distribution Plan', 14, finalY + 15);
       
@@ -409,7 +487,6 @@ export default function Reports() {
         </button>
       </div>
 
-      {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="vault-card p-6 group hover:gold-glow transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
@@ -432,12 +509,12 @@ export default function Reports() {
               <BarChart3 size={24} />
             </div>
             <span className="text-[10px] font-black text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full border border-blue-500/20 uppercase tracking-widest">
-              Velocity
+              Growth
             </span>
           </div>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Sales Velocity</p>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Growth Rate (MoM)</p>
           <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
-            {analytics.salesVelocity.toFixed(2)} <span className="text-sm font-normal text-slate-600">/day</span>
+            {analytics.growthRate.toFixed(1)}%
           </h3>
         </div>
 
@@ -447,12 +524,12 @@ export default function Reports() {
               <Package size={24} />
             </div>
             <span className="text-[10px] font-black text-purple-500 bg-purple-500/10 px-2 py-1 rounded-full border border-purple-500/20 uppercase tracking-widest">
-              Assets
+              Valuation
             </span>
           </div>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Inventory Value</p>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Total Asset Valuation</p>
           <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
-            ${analytics.assetValuation.toLocaleString()}
+            ${analytics.totalAssetValuation.toLocaleString()}
           </h3>
         </div>
 
@@ -475,6 +552,190 @@ export default function Reports() {
           <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
             {(analytics.deadStockRatio * 100).toFixed(1)}%
           </h3>
+        </div>
+      </div>
+
+      {/* Strategic Intelligence Modules */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Marketing: Demand Velocity */}
+        <div className="vault-card p-6 border-l-4 border-[#FFD700]">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-[#FFD700]/10 text-[#FFD700] rounded-lg">
+              <TrendingUp size={20} />
+            </div>
+            <h3 className="font-black text-white uppercase tracking-tighter">Marketing: Demand Velocity</h3>
+          </div>
+          <div className="space-y-4">
+            {analytics.demandVelocity.map((cat, idx) => (
+              <div key={cat.name} className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-bold">{cat.name}</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-24 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-[#FFD700]" 
+                      style={{ width: `${(cat.velocity / (analytics.demandVelocity[0]?.velocity || 1)) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-black text-[#FFD700]">{cat.velocity} units</span>
+                </div>
+              </div>
+            ))}
+            {analytics.demandVelocity.length === 0 && (
+              <p className="text-xs text-slate-600 italic">No recent category data available.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Financial: Profit Margin & Revenue vs Cost */}
+        <div className="vault-card p-6 border-l-4 border-emerald-500">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg">
+              <DollarSign size={20} />
+            </div>
+            <h3 className="font-black text-white uppercase tracking-tighter">Financial: Profit Health</h3>
+          </div>
+          <div className="space-y-6">
+            <div className="flex flex-col items-center justify-center py-2">
+              <div className="relative w-32 h-32 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90">
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r="58"
+                    stroke="currentColor"
+                    strokeWidth="8"
+                    fill="transparent"
+                    className="text-white/5"
+                  />
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r="58"
+                    stroke="currentColor"
+                    strokeWidth="8"
+                    fill="transparent"
+                    strokeDasharray={364.4}
+                    strokeDashoffset={364.4 - (364.4 * Math.min(100, analytics.profitMargin)) / 100}
+                    className="text-emerald-500 transition-all duration-1000"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-2xl font-black text-white">{analytics.profitMargin.toFixed(1)}%</span>
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Margin</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-white/5 rounded-xl border border-white/5">
+                <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Revenue</p>
+                <p className="text-sm font-black text-white">${analytics.totalRevenue.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-white/5 rounded-xl border border-white/5">
+                <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">COGS</p>
+                <p className="text-sm font-black text-rose-500">${analytics.totalCostOfGoodsSold.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Operations: Load & Dead Stock */}
+        <div className="vault-card p-6 border-l-4 border-blue-500">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
+              <Package size={20} />
+            </div>
+            <h3 className="font-black text-white uppercase tracking-tighter">Operations: Efficiency</h3>
+          </div>
+          <div className="space-y-6">
+            <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Operational Load</p>
+                <span className="text-xs font-black text-blue-500">{analytics.operationalLoad.toFixed(2)} tx/day</span>
+              </div>
+              <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-blue-500" 
+                  style={{ width: `${Math.min(100, (analytics.operationalLoad / 50) * 100)}%` }}
+                />
+              </div>
+            </div>
+            <div className="p-4 bg-rose-500/5 border border-rose-500/10 rounded-2xl">
+              <div className="flex items-center gap-2 text-rose-500 font-black text-[10px] mb-1 uppercase tracking-widest">
+                <AlertTriangle size={14} />
+                Dead Stock Detector
+              </div>
+              <p className="text-[10px] text-slate-400 leading-relaxed font-medium">
+                <span className="text-rose-500 font-black">{analytics.deadStock.length} items</span> have zero movement. 
+                Capital locked: <span className="text-white font-black">${analytics.deadStockValue.toLocaleString()}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Support: Refund/Return Proxy */}
+        <div className="vault-card p-6 border-l-4 border-rose-500">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-rose-500/10 text-rose-500 rounded-lg">
+              <CheckCircle2 size={20} />
+            </div>
+            <h3 className="font-black text-white uppercase tracking-tighter">Support: Satisfaction</h3>
+          </div>
+          <div className="flex flex-col items-center justify-center py-4">
+            <div className="text-4xl font-black text-white mb-2">{analytics.refundCount}</div>
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 text-center">Refund/Return Events (Ledger Proxy)</p>
+            <div className="w-full p-4 bg-white/5 rounded-2xl border border-white/5">
+              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2">Satisfaction Index</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-emerald-500" 
+                    style={{ width: `${Math.max(0, 100 - (analytics.refundCount * 2))}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-black text-emerald-500">{Math.max(0, 100 - (analytics.refundCount * 2))}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Executive: Growth & Valuation */}
+        <div className="vault-card p-6 border-l-4 border-purple-500 md:col-span-2">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-purple-500/10 text-purple-500 rounded-lg">
+              <TrendingUp size={20} />
+            </div>
+            <h3 className="font-black text-white uppercase tracking-tighter">Executive: Strategic Position</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Growth Trajectory</p>
+              <div className="flex items-end gap-3">
+                <div className="text-4xl font-black text-white">{analytics.growthRate.toFixed(1)}%</div>
+                <div className={cn(
+                  "flex items-center gap-1 text-xs font-black mb-1 px-2 py-0.5 rounded-full",
+                  analytics.growthRate >= 0 ? "text-emerald-500 bg-emerald-500/10" : "text-rose-500 bg-rose-500/10"
+                )}>
+                  {analytics.growthRate >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                  {analytics.growthRate >= 0 ? 'Expansion' : 'Contraction'}
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 font-medium">Month-over-Month revenue comparison based on ledger sales data.</p>
+            </div>
+            <div className="space-y-4">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Total Enterprise Value</p>
+              <div className="text-4xl font-black text-[#FFD700]">${analytics.totalAssetValuation.toLocaleString()}</div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-purple-500" />
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Assets: ${analytics.assetValuation.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Profit: ${analytics.netProfit.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
