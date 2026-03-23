@@ -117,9 +117,9 @@ export default function MasterFinance() {
 
     // 3. 3-Pillar Engine Mapping
     const PILLARS = {
-      Oil: ['oil', 'lube', 'atf', 'brake fluid', 'grease'],
-      Spares: ['pad', 'plug', 'filter', 'belt', 'bush', 'shock', 'brake', 'hardware', 'gasket', 'suspension', 'engine'],
-      Electrical: ['bulb', 'battery', 'fuse', 'relay', 'sensor', 'wire', 'light', 'spark']
+      Oil: ['oil', 'lube', 'fluid', 'atf'],
+      Spares: ['pad', 'filter', 'plug', 'belt', 'bolt', 'suspension', 'brake', 'hardware', 'gasket', 'engine'],
+      Electrical: ['bulb', 'battery', 'fuse', 'relay', 'sensor', 'plug', 'wire', 'light', 'spark']
     };
 
     const getPillar = (desc: string = '') => {
@@ -132,7 +132,7 @@ export default function MasterFinance() {
 
     const isRestock = (desc: string = '') => {
       const d = desc.toLowerCase();
-      return ['restock', 'purchase', 'supply'].some(k => d.includes(k));
+      return ['purchase', 'restock', 'supplies', 'supply'].some(k => d.includes(k));
     };
 
     const pillarStats = ledger.reduce((acc, e) => {
@@ -152,9 +152,9 @@ export default function MasterFinance() {
 
     const categoryHealth = ['Oil', 'Spares', 'Electrical', 'Other'].map(name => {
       const stats = pillarStats[name] || { revenue: 0, expense: 0, decap: 0 };
-      const sRev = (stats.revenue / daysDiff) * multiplier;
-      const sExp = (stats.expense / daysDiff) * multiplier;
-      const sDecap = (stats.decap / daysDiff) * multiplier;
+      const sRev = (stats.revenue / (daysDiff || 1)) * multiplier;
+      const sExp = (stats.expense / (daysDiff || 1)) * multiplier;
+      const sDecap = (stats.decap / (daysDiff || 1)) * multiplier;
       const profit = sRev - sExp;
       const margin = sRev > 0 ? (profit / sRev) * 100 : 0;
       const status = sDecap > sRev ? 'Stocking Up' : 'Healthy';
@@ -281,7 +281,7 @@ export default function MasterFinance() {
         <AlertTriangle className="text-rose-500 mx-auto mb-6" size={48} />
         <h3 className="text-white font-black uppercase tracking-tighter text-xl mb-2">Engine Failure</h3>
         <p className="text-slate-500 text-sm mb-8 leading-relaxed">{error}</p>
-        <button onClick={fetchData} className="gold-btn w-full py-4">Re-Initialize Engine</button>
+        <button onClick={fetchData} className="gold-btn w-full py-4 min-h-[48px]">Re-Initialize Engine</button>
       </div>
     );
   }
@@ -290,7 +290,7 @@ export default function MasterFinance() {
     return (
       <div className="vault-card p-12 text-center max-w-lg mx-auto mt-10">
         <BarChart3 className="text-[#FFD700] mx-auto mb-6" size={48} />
-        <h3 className="text-white font-black uppercase tracking-tighter text-xl mb-2">No Data Detected</h3>
+        <h3 className="text-white font-black uppercase tracking-tighter text-xl mb-2">Awaiting First Transaction</h3>
         <p className="text-slate-500 text-sm mb-8 leading-relaxed">
           The Growth Engine requires ledger activity to generate simulations. 
           Record your first sale or expense to begin.
@@ -321,7 +321,7 @@ export default function MasterFinance() {
               key={range}
               onClick={() => setTimeRange(range)}
               className={cn(
-                "px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
+                "px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap min-h-[48px]",
                 timeRange === range 
                   ? "bg-[#FFD700] text-[#0a0a0a] shadow-[0_0_20px_rgba(255,215,0,0.3)]" 
                   : "text-slate-500 hover:text-white"
@@ -440,7 +440,7 @@ export default function MasterFinance() {
                   type="number" 
                   value={loanAmount}
                   onChange={(e) => setLoanAmount(Number(e.target.value))}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-lg font-black outline-none focus:border-[#FFD700]/50 transition-all text-white"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-lg font-black outline-none focus:border-[#FFD700]/50 transition-all text-white min-h-[48px]"
                 />
               </div>
 
@@ -450,7 +450,7 @@ export default function MasterFinance() {
                   type="number" 
                   value={loanDuration}
                   onChange={(e) => setLoanDuration(Number(e.target.value))}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-lg font-black outline-none focus:border-[#FFD700]/50 transition-all text-white"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-lg font-black outline-none focus:border-[#FFD700]/50 transition-all text-white min-h-[48px]"
                 />
               </div>
             </div>
@@ -506,7 +506,7 @@ export default function MasterFinance() {
             <button 
               onClick={exportToPDF}
               disabled={isExporting}
-              className="w-full mt-8 gold-btn py-4 flex items-center justify-center gap-3 disabled:opacity-50"
+              className="w-full mt-8 gold-btn py-4 flex items-center justify-center gap-3 disabled:opacity-50 min-h-[48px]"
             >
               {isExporting ? <RefreshCw className="animate-spin" size={18} /> : <><Download size={18} /> Export Executive Report</>}
             </button>
