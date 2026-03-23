@@ -41,6 +41,7 @@ type TimeRange = 'daily' | 'weekly' | 'monthly' | 'semi-annual' | 'annual';
 
 export default function MasterFinance() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>('monthly');
@@ -55,16 +56,21 @@ export default function MasterFinance() {
 
   async function fetchData() {
     setLoading(true);
+    setError(null);
     try {
       const [inventoryRes, ledgerRes] = await Promise.all([
         supabase.from('inventory').select('*'),
         supabase.from('ledger').select('*').order('created_at', { ascending: true })
       ]);
 
+      if (inventoryRes.error) throw inventoryRes.error;
+      if (ledgerRes.error) throw ledgerRes.error;
+
       if (inventoryRes.data) setInventory(inventoryRes.data);
       if (ledgerRes.data) setLedger(ledgerRes.data);
     } catch (err) {
       console.error('Error fetching financial data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch financial data');
     } finally {
       setLoading(false);
     }
@@ -138,12 +144,16 @@ export default function MasterFinance() {
       return acc;
     }, {} as Record<string, { revenue: number, expense: number, decap: number }>);
 
-    const categoryHealth = Object.entries(pillarStats).map(([name, stats]: [string, { revenue: number, expense: number, decap: number }]) => {
+    const categoryHealth = ['Oil', 'Spares', 'Electrical', 'Other'].map(name => {
+      const stats = pillarStats[name] || { revenue: 0, expense: 0, decap: 0 };
       const scaledRev = (stats.revenue / daysDiff) * multiplier;
       const scaledExp = (stats.expense / daysDiff) * multiplier;
+      const scaledDecap = (stats.decap / daysDiff) * multiplier;
       const profit = scaledRev - scaledExp;
       const margin = scaledRev > 0 ? (profit / scaledRev) * 100 : 0;
-      const status = scaledExp > scaledRev ? 'Stocking Up' : 'Healthy';
+      
+      // Stocking Up status is triggered when restocking expenses for a category exceed its revenue
+      const status = scaledDecap > scaledRev ? 'Stocking Up' : 'Healthy';
 
       return {
         name,
@@ -152,7 +162,7 @@ export default function MasterFinance() {
         profit,
         margin,
         status,
-        decap: (stats.decap / daysDiff) * multiplier
+        decap: scaledDecap
       };
     }).sort((a, b) => b.revenue - a.revenue);
 
@@ -257,20 +267,24 @@ export default function MasterFinance() {
     setIsExporting(true);
     
     try {
+      // Small delay to ensure charts are fully rendered
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       const canvas = await html2canvas(reportRef.current, {
-        scale: 2,
+        scale: 3, // Increase scale for higher fidelity
         backgroundColor: '#0a0a0a',
         logging: false,
         useCORS: true,
+        allowTaint: true,
         windowWidth: 1400 // Force desktop-like width for capture
       });
       
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
       pdf.save(`Master_Finance_Report_${timeRange.toUpperCase()}.pdf`);
     } catch (err) {
       console.error('PDF Export Error:', err);
@@ -288,7 +302,42 @@ export default function MasterFinance() {
     );
   }
 
-  if (!analytics) return null;
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-6 text-center px-4">
+        <div className="p-4 bg-rose-500/10 rounded-full border border-rose-500/20">
+          <AlertTriangle className="text-rose-500" size={32} />
+        </div>
+        <div>
+          <h3 className="text-white font-black uppercase tracking-widest text-sm mb-2">Engine Failure</h3>
+          <p className="text-slate-500 text-xs max-w-xs mx-auto leading-relaxed">{error}</p>
+        </div>
+        <button 
+          onClick={() => fetchData()}
+          className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+        >
+          Re-Initialize Engine
+        </button>
+      </div>
+    );
+  }
+
+  if (!analytics) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-6 text-center px-4">
+        <div className="p-4 bg-[#FFD700]/10 rounded-full border border-[#FFD700]/20">
+          <BarChart3 className="text-[#FFD700]" size={32} />
+        </div>
+        <div>
+          <h3 className="text-white font-black uppercase tracking-widest text-sm mb-2">No Data Detected</h3>
+          <p className="text-slate-500 text-xs max-w-xs mx-auto leading-relaxed">
+            The Growth Engine requires ledger transactions to generate simulations. 
+            Start by recording sales or expenses in the POS or Outflow Guardian.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const COLORS = ['#FFD700', '#C0C0C0', '#CD7F32', '#4a4a4a', '#2a2a2a'];
 
@@ -647,7 +696,9 @@ export default function MasterFinance() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {analytics.categoryHealth.map((cat, idx) => (
+                  {analytics.categoryHealth
+                    .filter(cat => ['Oil', 'Spares', 'Electrical'].includes(cat.name))
+                    .map((cat, idx) => (
                     <tr key={idx} className="group hover:bg-white/[0.02] transition-colors">
                       <td className="py-4 font-black text-xs text-white">{cat.name}</td>
                       <td className="py-4 text-xs font-mono text-right">${cat.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
