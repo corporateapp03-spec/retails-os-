@@ -64,7 +64,7 @@ export default function PinGuard({ children, protectedPages, activePage }: PinGu
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-[#0a0a0a] flex flex-col items-center justify-center p-4 overflow-hidden"
+      className="fixed inset-0 z-pin-pad bg-[#0a0a0a] flex flex-col items-center justify-center p-4 overflow-hidden"
     >
       {/* Background Glows */}
       <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-[#FFD700]/10 blur-[150px] rounded-full animate-pulse" />

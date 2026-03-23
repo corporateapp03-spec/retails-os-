@@ -103,19 +103,66 @@ export default function MasterFinance() {
     const scaledExpenses: number = dailyExpenses * multiplier;
     const scaledProfit: number = dailyProfit * multiplier;
 
-    // 3. Category Breakdown (Expenses)
-    const categories = expenses.reduce((acc, e) => {
-      const cat = e.description?.split(':')[0] || 'Miscellaneous';
-      acc[cat] = (acc[cat] || 0) + e.amount;
+    // 3. 3-Pillar Categorization & Health Logic
+    const PILLARS = {
+      Oil: ['oil', 'lubricant', 'grease'],
+      Spares: ['brake', 'filter', 'hardware', 'pad', 'plug', 'belt', 'gasket', 'suspension', 'engine'],
+      Electrical: ['bulb', 'battery', 'fuse', 'wire', 'light', 'sensor', 'spark']
+    };
+
+    const getPillar = (desc: string = '') => {
+      const d = desc.toLowerCase();
+      if (PILLARS.Oil.some(k => d.includes(k))) return 'Oil';
+      if (PILLARS.Electrical.some(k => d.includes(k))) return 'Electrical';
+      if (PILLARS.Spares.some(k => d.includes(k))) return 'Spares';
+      return 'Other';
+    };
+
+    const isDecapitalization = (desc: string = '') => {
+      const d = desc.toLowerCase();
+      return ['restock', 'purchase', 'supply'].some(k => d.includes(k));
+    };
+
+    const pillarStats = ledger.reduce((acc, e) => {
+      const pillar = getPillar(e.description);
+      if (!acc[pillar]) acc[pillar] = { revenue: 0, expense: 0, decap: 0 };
+      
+      if (e.transaction_type === 'sale') {
+        acc[pillar].revenue += e.amount;
+      } else if (e.transaction_type === 'expense') {
+        acc[pillar].expense += e.amount;
+        if (isDecapitalization(e.description)) {
+          acc[pillar].decap += e.amount;
+        }
+      }
       return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, { revenue: number, expense: number, decap: number }>);
 
-    const pieData = Object.entries(categories).map(([name, value]: [string, number]) => ({
-      name,
-      value: totalExpenses !== 0 ? (value / totalExpenses) * scaledExpenses : 0
-    })).sort((a: any, b: any) => b.value - a.value);
+    const categoryHealth = Object.entries(pillarStats).map(([name, stats]: [string, { revenue: number, expense: number, decap: number }]) => {
+      const scaledRev = (stats.revenue / daysDiff) * multiplier;
+      const scaledExp = (stats.expense / daysDiff) * multiplier;
+      const profit = scaledRev - scaledExp;
+      const margin = scaledRev > 0 ? (profit / scaledRev) * 100 : 0;
+      const status = scaledExp > scaledRev ? 'Stocking Up' : 'Healthy';
 
-    // 4. Profit Trends (Financial Heartbeat)
+      return {
+        name,
+        revenue: scaledRev,
+        expense: scaledExp,
+        profit,
+        margin,
+        status,
+        decap: (stats.decap / daysDiff) * multiplier
+      };
+    }).sort((a, b) => b.revenue - a.revenue);
+
+    // 4. Expense Allocation (Pie Data)
+    const pieData = categoryHealth.map(c => ({
+      name: c.name,
+      value: c.expense
+    })).filter(c => c.value > 0);
+
+    // 5. Profit Trends (Financial Heartbeat)
     // Group by day first
     const dailyData = ledger.reduce((acc, e) => {
       const date = new Date(e.created_at).toLocaleDateString();
@@ -132,7 +179,7 @@ export default function MasterFinance() {
       }))
       .slice(-15); // Last 15 days of activity
 
-    // 5. Top Products (The Engine)
+    // 6. Top Products (The Engine)
     const productSales = sales.reduce((acc, e) => {
       const name = e.description?.replace('Sale: ', '').split(' (x')[0] || 'Unknown';
       acc[name] = (acc[name] || 0) + e.amount;
@@ -144,7 +191,7 @@ export default function MasterFinance() {
       .sort((a: any, b: any) => b.revenue - a.revenue)
       .slice(0, 5);
 
-    // 6. Loan Intelligence
+    // 7. Loan Intelligence
     const safeCapacity = scaledProfit * 0.5;
     const monthlyPayment = loanAmount / loanDuration;
     
@@ -175,7 +222,7 @@ export default function MasterFinance() {
       statusBorder = 'border-amber-500/20';
     }
 
-    // 7. Funding Impact (25% Growth)
+    // 8. Funding Impact (25% Growth)
     const projectedGrowth = 1.25;
     const projectedRevenue = scaledRevenue * projectedGrowth;
     const projectedProfit = projectedRevenue - scaledExpenses;
@@ -200,6 +247,7 @@ export default function MasterFinance() {
       statusBorder,
       growthData,
       projectedProfit,
+      categoryHealth,
       growthPercentage: scaledProfit !== 0 ? ((projectedProfit - scaledProfit) / Math.abs(scaledProfit)) * 100 : 0
     };
   }, [ledger, timeRange, loanAmount, loanDuration]);
@@ -213,7 +261,8 @@ export default function MasterFinance() {
         scale: 2,
         backgroundColor: '#0a0a0a',
         logging: false,
-        useCORS: true
+        useCORS: true,
+        windowWidth: 1400 // Force desktop-like width for capture
       });
       
       const imgData = canvas.toDataURL('image/png');
@@ -550,30 +599,77 @@ export default function MasterFinance() {
           </div>
         </div>
 
-        {/* The Engine: Top Products */}
-        <div className="bg-white/5 border border-white/10 p-8 rounded-[32px]">
-          <div className="flex items-center gap-3 mb-8">
-            <Zap className="text-[#FFD700]" size={20} />
-            <h4 className="text-white font-black uppercase tracking-widest text-xs">The Engine: Top Revenue Contributors</h4>
+          {/* The Engine: Top Products */}
+          <div className="bg-white/5 border border-white/10 p-8 rounded-[32px]">
+            <div className="flex items-center gap-3 mb-8">
+              <Zap className="text-[#FFD700]" size={20} />
+              <h4 className="text-white font-black uppercase tracking-widest text-xs">The Engine: Top Revenue Contributors</h4>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              {analytics.topProducts.map((product, idx) => (
+                <div key={idx} className="bg-white/5 border border-white/5 p-6 rounded-2xl group hover:border-[#FFD700]/30 transition-all">
+                  <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest mb-1">Rank #{idx + 1}</p>
+                  <h5 className="text-white font-black text-sm truncate mb-2">{product.name}</h5>
+                  <p className="text-[#FFD700] font-mono text-xs">${product.revenue.toLocaleString()}</p>
+                  <div className="mt-3 w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-[#FFD700] opacity-50" 
+                      style={{ width: `${(product.revenue / analytics.topProducts[0].revenue) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {analytics.topProducts.map((product, idx) => (
-              <div key={idx} className="bg-white/5 border border-white/5 p-6 rounded-2xl group hover:border-[#FFD700]/30 transition-all">
-                <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest mb-1">Rank #{idx + 1}</p>
-                <h5 className="text-white font-black text-sm truncate mb-2">{product.name}</h5>
-                <p className="text-[#FFD700] font-mono text-xs">${product.revenue.toLocaleString()}</p>
-                <div className="mt-3 w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-[#FFD700] opacity-50" 
-                    style={{ width: `${(product.revenue / analytics.topProducts[0].revenue) * 100}%` }}
-                  />
-                </div>
+          {/* Category Health Table */}
+          <div className="bg-white/5 border border-white/10 p-8 rounded-[32px] overflow-hidden">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h4 className="text-white font-black uppercase tracking-widest text-xs">Category Health & Decapitalization</h4>
+                <p className="text-slate-500 text-[10px] font-bold uppercase mt-1">Performance by Pillar ({timeRange})</p>
               </div>
-            ))}
+              <ShieldCheck className="text-[#FFD700]" size={20} />
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/5">
+                    <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Category</th>
+                    <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Revenue</th>
+                    <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Expense</th>
+                    <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Decap (Restock)</th>
+                    <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Net Profit</th>
+                    <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Margin</th>
+                    <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {analytics.categoryHealth.map((cat, idx) => (
+                    <tr key={idx} className="group hover:bg-white/[0.02] transition-colors">
+                      <td className="py-4 font-black text-xs text-white">{cat.name}</td>
+                      <td className="py-4 text-xs font-mono text-right">${cat.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      <td className="py-4 text-xs font-mono text-right text-rose-500">${cat.expense.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      <td className="py-4 text-xs font-mono text-right text-amber-500">${cat.decap.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      <td className="py-4 text-xs font-mono text-right text-emerald-500">${cat.profit.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      <td className="py-4 text-xs font-mono text-right">{cat.margin.toFixed(1)}%</td>
+                      <td className="py-4 text-right">
+                        <span className={cn(
+                          "px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest",
+                          cat.status === 'Healthy' ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"
+                        )}>
+                          {cat.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
 }

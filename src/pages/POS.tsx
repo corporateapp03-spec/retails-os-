@@ -350,11 +350,59 @@ export default function POS() {
               <p className="text-[10px] font-black uppercase tracking-[0.3em]">Loading Vault...</p>
             </div>
           ) : filteredProducts.length > 0 ? (
-            <div className="divide-y divide-white/5">
-              {filteredProducts.map(item => (
-                <ProductItem key={item.id} item={item} onAdd={addToCart} />
-              ))}
-            </div>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block desktop-table w-full">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-white/5 bg-white/5">
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Product</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Code</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Stock</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {filteredProducts.map(item => (
+                      <tr 
+                        key={item.id} 
+                        onClick={() => addToCart(item)}
+                        className={cn(
+                          "hover:bg-[#FFD700]/10 cursor-pointer transition-colors group",
+                          item.quantity <= 0 && "opacity-30 grayscale cursor-not-allowed"
+                        )}
+                      >
+                        <td className="px-4 py-3">
+                          <p className="font-black text-white text-sm group-hover:gold-text">{item.name}</p>
+                          <p className="text-[10px] text-slate-500 uppercase">{CATEGORY_MAP[item.category_id] || item.category}</p>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[10px] text-slate-400">{item.code}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn(
+                            "text-[10px] font-black uppercase",
+                            item.quantity > 5 ? "text-emerald-500" : "text-rose-500"
+                          )}>
+                            {item.quantity} units
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-black text-[#FFD700]">
+                          ${(item.selling_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile List View */}
+              <div className="md:hidden mobile-card-list">
+                <div className="divide-y divide-white/5">
+                  {filteredProducts.map(item => (
+                    <ProductItem key={item.id} item={item} onAdd={addToCart} />
+                  ))}
+                </div>
+              </div>
+            </>
           ) : searchQuery ? (
             <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-20">
               <Package size={48} />

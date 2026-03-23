@@ -32,7 +32,7 @@
   }
 
   body {
-    @apply font-sans antialiased transition-colors duration-500;
+    @apply font-sans antialiased transition-colors duration-500 overflow-x-hidden max-w-full;
     background-color: var(--bg-primary);
     color: var(--text-primary);
   }
@@ -51,6 +51,21 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background: var(--text-secondary);
+  }
+}
+
+@layer utilities {
+  .mobile-card-list {
+    @apply block md:hidden space-y-4;
+  }
+  .desktop-table {
+    @apply hidden md:table;
+  }
+  .z-sidebar {
+    z-index: 1000;
+  }
+  .z-pin-pad {
+    z-index: 2000;
   }
 }
 

@@ -127,7 +127,7 @@ export default function App() {
       {/* Sidebar */}
       <aside 
         className={cn(
-          "bg-[#050505] text-white transition-all duration-500 ease-in-out flex flex-col border-r border-white/5 relative z-50",
+          "bg-[#050505] text-white transition-all duration-500 ease-in-out flex flex-col border-r border-white/5 relative z-sidebar",
           isSidebarOpen ? "w-72" : "w-20"
         )}
       >
@@ -197,15 +197,15 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="h-20 bg-[#0a0a0a] border-b border-white/5 flex items-center justify-between px-10 shrink-0 relative z-40">
+        <header className="h-20 bg-[#0a0a0a] border-b border-white/5 flex items-center justify-between px-4 md:px-10 shrink-0 relative z-40">
           <div className="flex items-center gap-4">
             <div className="h-8 w-1 bg-[#FFD700] rounded-full" />
-            <h1 className="text-2xl font-black text-white uppercase tracking-tighter">
+            <h1 className="text-xl md:text-2xl font-black text-white uppercase tracking-tighter">
               {activePage.replace('-', ' ')}
             </h1>
           </div>
           <div className="flex items-center gap-6">
-            <div className="relative group">
+            <div className="relative group hidden md:block">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-[#FFD700] transition-colors" size={18} />
               <input 
                 type="text" 
@@ -216,12 +216,12 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-10 relative custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 md:p-10 relative custom-scrollbar max-w-full mx-auto">
           {/* Background Glows */}
           <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[#FFD700]/5 blur-[150px] rounded-full pointer-events-none" />
           <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
           
-          <div className="relative z-10">
+          <div className="relative z-10 w-full">
             <PinGuard protectedPages={['dashboard', 'outflow', 'reports', 'sales', 'master-finance']} activePage={activePage}>
               {activePage === 'dashboard' && <Dashboard />}
               {activePage === 'inventory' && <Inventory />}

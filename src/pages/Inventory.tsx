@@ -239,9 +239,10 @@ export default function Inventory() {
         </button>
       </div>
 
-      {/* Inventory Table */}
+      {/* Inventory Table & Mobile List */}
       <div className="vault-card overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop Table */}
+        <div className="desktop-table w-full overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-white/5 border-b border-white/10">
@@ -303,19 +304,19 @@ export default function Inventory() {
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
-                          onClick={() => setEditingItem(item)}
-                          className="p-2 text-slate-500 hover:text-[#FFD700] hover:bg-[#FFD700]/10 rounded-xl transition-all"
-                          title="Edit Item"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(item.id)}
-                          className="p-2 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
-                          title="Delete Item"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                           onClick={() => setEditingItem(item)}
+                           className="p-2 text-slate-500 hover:text-[#FFD700] hover:bg-[#FFD700]/10 rounded-xl transition-all"
+                           title="Edit Item"
+                         >
+                           <Edit2 size={16} />
+                         </button>
+                         <button 
+                           onClick={() => handleDelete(item.id)}
+                           className="p-2 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
+                           title="Delete Item"
+                         >
+                           <Trash2 size={16} />
+                         </button>
                       </div>
                     </td>
                   </tr>
@@ -323,6 +324,49 @@ export default function Inventory() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card List */}
+        <div className="mobile-card-list p-4">
+          {filteredItems.length === 0 ? (
+            <div className="text-center py-12">
+              <Package size={40} className="mx-auto text-slate-800 mb-4" />
+              <p className="text-slate-500 font-black uppercase tracking-tighter">No inventory records found.</p>
+            </div>
+          ) : (
+            filteredItems.map((item) => (
+              <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-black text-white uppercase tracking-tighter">{item.name}</h3>
+                    <p className="text-[10px] text-slate-600 font-mono">{item.code}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditingItem(item)} className="p-2 bg-white/5 rounded-lg text-slate-400"><Edit2 size={14} /></button>
+                    <button onClick={() => handleDelete(item.id)} className="p-2 bg-rose-500/10 rounded-lg text-rose-500"><Trash2 size={14} /></button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Category</p>
+                    <p className="text-xs font-bold text-slate-400">{CATEGORY_MAP[item.category_id] || 'Other'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Stock Level</p>
+                    <p className="text-xs font-bold text-white">{item.quantity} <span className="text-[9px] text-slate-600">(Min: {item.min_stock_level})</span></p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Cost Price</p>
+                    <p className="text-xs font-bold text-slate-500">${item.cost_price.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Selling Price</p>
+                    <p className="text-xs font-black text-[#FFD700]">${item.selling_price.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
