@@ -10,7 +10,8 @@ import {
   ShieldCheck,
   BarChart3,
   LogOut,
-  User
+  User,
+  Zap
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { supabase } from './lib/supabase';
@@ -20,12 +21,13 @@ import POS from './pages/POS';
 import Sales from './pages/Sales';
 import Outflow from './pages/Outflow';
 import Reports from './pages/Reports';
+import MasterFinance from './pages/MasterFinance';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import PinGuard from './components/PinGuard';
 import ThemeSwitcher from './components/ThemeSwitcher';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports' | 'master-finance';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -117,6 +119,7 @@ export default function App() {
     { id: 'sales', label: 'Sales Archive', icon: History },
     { id: 'outflow', label: 'Outflow Guardian', icon: ShieldCheck },
     { id: 'reports', label: 'Executive Intel', icon: BarChart3 },
+    { id: 'master-finance', label: 'Growth Engine', icon: Zap },
   ];
 
   return (
@@ -219,13 +222,14 @@ export default function App() {
           <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
           
           <div className="relative z-10">
-            <PinGuard protectedPages={['dashboard', 'outflow', 'reports', 'sales']} activePage={activePage}>
+            <PinGuard protectedPages={['dashboard', 'outflow', 'reports', 'sales', 'master-finance']} activePage={activePage}>
               {activePage === 'dashboard' && <Dashboard />}
               {activePage === 'inventory' && <Inventory />}
               {activePage === 'pos' && <POS />}
               {activePage === 'sales' && <Sales />}
               {activePage === 'outflow' && <Outflow />}
               {activePage === 'reports' && <Reports />}
+              {activePage === 'master-finance' && <MasterFinance />}
             </PinGuard>
           </div>
         </div>
