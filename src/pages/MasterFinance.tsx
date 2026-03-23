@@ -87,7 +87,12 @@ export default function MasterFinance() {
     const totalExpenses: number = expenses.reduce((sum, e) => sum + e.amount, 0);
     
     // Find date range
-    const dates = ledger.map(e => new Date(e.created_at).getTime());
+    const dates = ledger
+      .map(e => new Date(e.created_at).getTime())
+      .filter(t => !isNaN(t));
+    
+    if (dates.length === 0) return null;
+
     const minDate = Math.min(...dates);
     const maxDate = Math.max(...dates);
     const daysDiff = Math.max(1, Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)));
@@ -202,8 +207,8 @@ export default function MasterFinance() {
       .slice(0, 5);
 
     // 7. Loan Intelligence
-    const safeCapacity = scaledProfit * 0.5;
-    const monthlyPayment = loanAmount / loanDuration;
+    const safeCapacity = Math.max(1, scaledProfit * 0.5);
+    const monthlyPayment = loanAmount / Math.max(1, loanDuration);
     
     // Adjust required payment to match timeRange
     const requiredPayment = {
@@ -214,7 +219,7 @@ export default function MasterFinance() {
       annual: monthlyPayment * 12
     }[timeRange];
 
-    const ratio = requiredPayment / safeCapacity;
+    const ratio = safeCapacity > 0 ? requiredPayment / safeCapacity : 100;
     let status: 'Safe' | 'Risky' | 'Over-Leveraged' = 'Safe';
     let statusColor = 'text-emerald-500';
     let statusBg = 'bg-emerald-500/10';
@@ -649,28 +654,30 @@ export default function MasterFinance() {
         </div>
 
           {/* The Engine: Top Products */}
-          <div className="bg-white/5 border border-white/10 p-8 rounded-[32px]">
-            <div className="flex items-center gap-3 mb-8">
-              <Zap className="text-[#FFD700]" size={20} />
-              <h4 className="text-white font-black uppercase tracking-widest text-xs">The Engine: Top Revenue Contributors</h4>
-            </div>
+          {analytics.topProducts.length > 0 && (
+            <div className="bg-white/5 border border-white/10 p-8 rounded-[32px]">
+              <div className="flex items-center gap-3 mb-8">
+                <Zap className="text-[#FFD700]" size={20} />
+                <h4 className="text-white font-black uppercase tracking-widest text-xs">The Engine: Top Revenue Contributors</h4>
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              {analytics.topProducts.map((product, idx) => (
-                <div key={idx} className="bg-white/5 border border-white/5 p-6 rounded-2xl group hover:border-[#FFD700]/30 transition-all">
-                  <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest mb-1">Rank #{idx + 1}</p>
-                  <h5 className="text-white font-black text-sm truncate mb-2">{product.name}</h5>
-                  <p className="text-[#FFD700] font-mono text-xs">${product.revenue.toLocaleString()}</p>
-                  <div className="mt-3 w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-[#FFD700] opacity-50" 
-                      style={{ width: `${(product.revenue / analytics.topProducts[0].revenue) * 100}%` }}
-                    />
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                {analytics.topProducts.map((product, idx) => (
+                  <div key={idx} className="bg-white/5 border border-white/5 p-6 rounded-2xl group hover:border-[#FFD700]/30 transition-all">
+                    <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest mb-1">Rank #{idx + 1}</p>
+                    <h5 className="text-white font-black text-sm truncate mb-2">{product.name}</h5>
+                    <p className="text-[#FFD700] font-mono text-xs">${product.revenue.toLocaleString()}</p>
+                    <div className="mt-3 w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-[#FFD700] opacity-50" 
+                        style={{ width: `${analytics.topProducts[0].revenue > 0 ? (product.revenue / analytics.topProducts[0].revenue) * 100 : 0}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Category Health Table */}
           <div className="bg-white/5 border border-white/10 p-8 rounded-[32px] overflow-hidden">
