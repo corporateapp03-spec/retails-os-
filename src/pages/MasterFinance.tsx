@@ -79,160 +79,171 @@ export default function MasterFinance() {
   }
 
   const analytics = useMemo(() => {
-    if (!ledger.length) return null;
+    if (!ledger || !ledger.length) return null;
 
-    // 1. Safety Wrap: Calculation Engine
-    const sales = ledger.filter(e => e.transaction_type === 'sale');
-    const expenses = ledger.filter(e => e.transaction_type === 'expense');
+    try {
+      // 1. Safety Wrap: Calculation Engine
+      const validLedger = ledger.filter(Boolean);
+      const sales = validLedger.filter(e => e.transaction_type === 'sale');
+      const expenses = validLedger.filter(e => e.transaction_type === 'expense');
 
-    const totalRevenue = sales.reduce((sum, e) => sum + (e.amount || 0), 0);
-    const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-    
-    const dates = ledger
-      .map(e => new Date(e.created_at).getTime())
-      .filter(t => !isNaN(t));
-    
-    if (dates.length === 0) return null;
-
-    const minDate = Math.min(...dates);
-    const maxDate = Math.max(...dates);
-    const daysDiff = Math.max(1, Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)));
-
-    const dailyRevenue = (totalRevenue || 0) / (daysDiff || 1);
-    const dailyExpenses = (totalExpenses || 0) / (daysDiff || 1);
-    const dailyProfit = dailyRevenue - dailyExpenses;
-
-    // 2. 5-Horizon Multiplier
-    const multiplier: number = {
-      daily: 1,
-      weekly: 7,
-      monthly: 30,
-      'semi-annual': 180,
-      annual: 365
-    }[timeRange];
-
-    const scaledRevenue = dailyRevenue * multiplier;
-    const scaledExpenses = dailyExpenses * multiplier;
-    const scaledProfit = dailyProfit * multiplier;
-
-    // 3. 3-Pillar Engine Mapping
-    const PILLARS = {
-      Oil: ['oil', 'lube', 'fluid', 'atf'],
-      Spares: ['pad', 'filter', 'plug', 'belt', 'bolt', 'suspension', 'brake', 'hardware', 'gasket', 'engine'],
-      Electrical: ['bulb', 'battery', 'fuse', 'relay', 'sensor', 'plug', 'wire', 'light', 'spark']
-    };
-
-    const getPillar = (desc: string = '') => {
-      const d = desc.toLowerCase();
-      if (PILLARS.Oil.some(k => d.includes(k))) return 'Oil';
-      if (PILLARS.Electrical.some(k => d.includes(k))) return 'Electrical';
-      if (PILLARS.Spares.some(k => d.includes(k))) return 'Spares';
-      return 'Other';
-    };
-
-    const isRestock = (desc: string = '') => {
-      const d = desc.toLowerCase();
-      return ['purchase', 'restock', 'supplies', 'supply'].some(k => d.includes(k));
-    };
-
-    const pillarStats = ledger.reduce((acc, e) => {
-      const pillar = getPillar(e.description);
-      if (!acc[pillar]) acc[pillar] = { revenue: 0, expense: 0, decap: 0 };
+      const totalRevenue = sales.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
       
-      if (e.transaction_type === 'sale') {
-        acc[pillar].revenue += (e.amount || 0);
-      } else if (e.transaction_type === 'expense') {
-        acc[pillar].expense += (e.amount || 0);
-        if (isRestock(e.description)) {
-          acc[pillar].decap += (e.amount || 0);
+      const dates = validLedger
+        .map(e => e.created_at ? new Date(e.created_at).getTime() : NaN)
+        .filter(t => !isNaN(t));
+      
+      if (dates.length === 0) return null;
+
+      const minDate = Math.min(...dates);
+      const maxDate = Math.max(...dates);
+      const daysDiff = Math.max(1, Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)));
+
+      const dailyRevenue = (totalRevenue || 0) / (daysDiff || 1);
+      const dailyExpenses = (totalExpenses || 0) / (daysDiff || 1);
+      const dailyProfit = dailyRevenue - dailyExpenses;
+
+      // 2. 5-Horizon Multiplier
+      const multiplier: number = {
+        daily: 1,
+        weekly: 7,
+        monthly: 30,
+        'semi-annual': 180,
+        annual: 365
+      }[timeRange] || 30;
+
+      const scaledRevenue = dailyRevenue * multiplier;
+      const scaledExpenses = dailyExpenses * multiplier;
+      const scaledProfit = dailyProfit * multiplier;
+
+      // 3. 3-Pillar Engine Mapping
+      const PILLARS = {
+        Oil: ['oil', 'lube', 'fluid', 'atf'],
+        Spares: ['pad', 'filter', 'plug', 'belt', 'bolt', 'suspension', 'brake', 'hardware', 'gasket', 'engine'],
+        Electrical: ['bulb', 'battery', 'fuse', 'relay', 'sensor', 'plug', 'wire', 'light', 'spark']
+      };
+
+      const getPillar = (desc: string | null | undefined) => {
+        if (!desc) return 'Other';
+        const d = String(desc).toLowerCase();
+        if (PILLARS.Oil.some(k => d.includes(k))) return 'Oil';
+        if (PILLARS.Electrical.some(k => d.includes(k))) return 'Electrical';
+        if (PILLARS.Spares.some(k => d.includes(k))) return 'Spares';
+        return 'Other';
+      };
+
+      const isRestock = (desc: string | null | undefined) => {
+        if (!desc) return false;
+        const d = String(desc).toLowerCase();
+        return ['purchase', 'restock', 'supplies', 'supply'].some(k => d.includes(k));
+      };
+
+      const pillarStats = validLedger.reduce((acc, e) => {
+        const pillar = getPillar(e.description);
+        if (!acc[pillar]) acc[pillar] = { revenue: 0, expense: 0, decap: 0 };
+        
+        const amount = Number(e.amount || 0);
+        if (e.transaction_type === 'sale') {
+          acc[pillar].revenue += amount;
+        } else if (e.transaction_type === 'expense') {
+          acc[pillar].expense += amount;
+          if (isRestock(e.description)) {
+            acc[pillar].decap += amount;
+          }
         }
+        return acc;
+      }, {} as Record<string, { revenue: number, expense: number, decap: number }>);
+
+      const categoryHealth = ['Oil', 'Spares', 'Electrical', 'Other'].map(name => {
+        const stats = pillarStats[name] || { revenue: 0, expense: 0, decap: 0 };
+        const sRev = (stats.revenue / (daysDiff || 1)) * multiplier;
+        const sExp = (stats.expense / (daysDiff || 1)) * multiplier;
+        const sDecap = (stats.decap / (daysDiff || 1)) * multiplier;
+        const profit = sRev - sExp;
+        const margin = sRev > 0 ? (profit / sRev) * 100 : 0;
+        const status = sDecap > sRev ? 'Stocking Up' : 'Healthy';
+
+        return { name, revenue: sRev, expense: sExp, profit, margin, status, decap: sDecap };
+      }).sort((a, b) => b.revenue - a.revenue);
+
+      // 4. Chart Data Preparation
+      const pieData = categoryHealth.map(c => ({
+        name: c.name,
+        value: c.expense
+      })).filter(c => c.value > 0);
+
+      const dailyData = validLedger.reduce((acc, e) => {
+        if (!e.created_at) return acc;
+        const date = new Date(e.created_at).toLocaleDateString();
+        if (!acc[date]) acc[date] = { date, revenue: 0, expenses: 0 };
+        const amount = Number(e.amount || 0);
+        if (e.transaction_type === 'sale') acc[date].revenue += amount;
+        else if (e.transaction_type === 'expense') acc[date].expenses += amount;
+        return acc;
+      }, {} as Record<string, any>);
+
+      const trendData = Object.values(dailyData)
+        .map((d: any) => ({ ...d, profit: d.revenue - d.expenses }))
+        .slice(-15);
+
+      // 5. Loan Simulation Logic
+      const safeCapacity = Math.max(0, scaledProfit * 0.5);
+      const monthlyPayment = (Number(loanAmount) || 0) / Math.max(1, Number(loanDuration) || 1);
+      
+      const requiredPayment = ({
+        daily: monthlyPayment / 30,
+        weekly: (monthlyPayment / 30) * 7,
+        monthly: monthlyPayment,
+        'semi-annual': monthlyPayment * 6,
+        annual: monthlyPayment * 12
+      } as Record<string, number>)[timeRange] || monthlyPayment;
+
+      const ratio = safeCapacity > 0 ? (requiredPayment || 0) / safeCapacity : 100;
+      let verdict: 'Safe' | 'Risky' | 'Danger' = 'Safe';
+      let vColor = 'text-emerald-500';
+      let vBg = 'bg-emerald-500/10';
+      let vBorder = 'border-emerald-500/20';
+
+      if (ratio > 0.8) {
+        verdict = 'Danger';
+        vColor = 'text-rose-500';
+        vBg = 'bg-rose-500/10';
+        vBorder = 'border-rose-500/20';
+      } else if (ratio > 0.5) {
+        verdict = 'Risky';
+        vColor = 'text-amber-500';
+        vBg = 'bg-amber-500/10';
+        vBorder = 'border-amber-500/20';
       }
-      return acc;
-    }, {} as Record<string, { revenue: number, expense: number, decap: number }>);
 
-    const categoryHealth = ['Oil', 'Spares', 'Electrical', 'Other'].map(name => {
-      const stats = pillarStats[name] || { revenue: 0, expense: 0, decap: 0 };
-      const sRev = (stats.revenue / (daysDiff || 1)) * multiplier;
-      const sExp = (stats.expense / (daysDiff || 1)) * multiplier;
-      const sDecap = (stats.decap / (daysDiff || 1)) * multiplier;
-      const profit = sRev - sExp;
-      const margin = sRev > 0 ? (profit / sRev) * 100 : 0;
-      const status = sDecap > sRev ? 'Stocking Up' : 'Healthy';
+      // 6. Growth Projection
+      const projectedProfit = scaledProfit * 1.25; // 25% Growth Simulation
+      const growthData = [
+        { name: 'Current', profit: scaledProfit },
+        { name: 'Projected', profit: projectedProfit }
+      ];
 
-      return { name, revenue: sRev, expense: sExp, profit, margin, status, decap: sDecap };
-    }).sort((a, b) => b.revenue - a.revenue);
-
-    // 4. Chart Data Preparation
-    const pieData = categoryHealth.map(c => ({
-      name: c.name,
-      value: c.expense
-    })).filter(c => c.value > 0);
-
-    const dailyData = ledger.reduce((acc, e) => {
-      const date = new Date(e.created_at).toLocaleDateString();
-      if (!acc[date]) acc[date] = { date, revenue: 0, expenses: 0 };
-      if (e.transaction_type === 'sale') acc[date].revenue += (e.amount || 0);
-      else if (e.transaction_type === 'expense') acc[date].expenses += (e.amount || 0);
-      return acc;
-    }, {} as Record<string, any>);
-
-    const trendData = Object.values(dailyData)
-      .map((d: any) => ({ ...d, profit: d.revenue - d.expenses }))
-      .slice(-15);
-
-    // 5. Loan Simulation Logic
-    const safeCapacity = Math.max(0, scaledProfit * 0.5);
-    const monthlyPayment = (loanAmount || 0) / Math.max(1, loanDuration || 1);
-    
-    const requiredPayment = {
-      daily: monthlyPayment / 30,
-      weekly: (monthlyPayment / 30) * 7,
-      monthly: monthlyPayment,
-      'semi-annual': monthlyPayment * 6,
-      annual: monthlyPayment * 12
-    }[timeRange];
-
-    const ratio = safeCapacity > 0 ? (requiredPayment || 0) / safeCapacity : 100;
-    let verdict: 'Safe' | 'Risky' | 'Danger' = 'Safe';
-    let vColor = 'text-emerald-500';
-    let vBg = 'bg-emerald-500/10';
-    let vBorder = 'border-emerald-500/20';
-
-    if (ratio > 0.8) {
-      verdict = 'Danger';
-      vColor = 'text-rose-500';
-      vBg = 'bg-rose-500/10';
-      vBorder = 'border-rose-500/20';
-    } else if (ratio > 0.5) {
-      verdict = 'Risky';
-      vColor = 'text-amber-500';
-      vBg = 'bg-amber-500/10';
-      vBorder = 'border-amber-500/20';
+      return {
+        scaledRevenue,
+        scaledExpenses,
+        scaledProfit,
+        pieData,
+        trendData,
+        safeCapacity,
+        requiredPayment,
+        verdict,
+        vColor,
+        vBg,
+        vBorder,
+        growthData,
+        categoryHealth,
+        growthPercentage: scaledProfit !== 0 ? ((projectedProfit - scaledProfit) / Math.abs(scaledProfit)) * 100 : 0
+      };
+    } catch (err) {
+      console.error('Analytics Engine Error:', err);
+      return null;
     }
-
-    // 6. Growth Projection
-    const projectedProfit = scaledProfit * 1.25; // 25% Growth Simulation
-    const growthData = [
-      { name: 'Current', profit: scaledProfit },
-      { name: 'Projected', profit: projectedProfit }
-    ];
-
-    return {
-      scaledRevenue,
-      scaledExpenses,
-      scaledProfit,
-      pieData,
-      trendData,
-      safeCapacity,
-      requiredPayment,
-      verdict,
-      vColor,
-      vBg,
-      vBorder,
-      growthData,
-      categoryHealth,
-      growthPercentage: scaledProfit !== 0 ? ((projectedProfit - scaledProfit) / Math.abs(scaledProfit)) * 100 : 0
-    };
   }, [ledger, timeRange, loanAmount, loanDuration]);
 
   const exportToPDF = async () => {
@@ -393,7 +404,17 @@ export default function MasterFinance() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={analytics.trendData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="date" stroke="#4a4a4a" fontSize={10} tickFormatter={(v) => v.split('/')[0] + '/' + v.split('/')[1]} />
+                  <XAxis 
+                    dataKey="date" 
+                    stroke="#4a4a4a" 
+                    fontSize={10} 
+                    tickFormatter={(v) => {
+                      if (!v || typeof v !== 'string') return '';
+                      const parts = v.split(/[/.-]/);
+                      if (parts.length < 2) return v;
+                      return `${parts[0]}/${parts[1]}`;
+                    }} 
+                  />
                   <YAxis stroke="#4a4a4a" fontSize={10} />
                   <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid rgba(255,215,0,0.2)', borderRadius: '12px' }} />
                   <Line type="monotone" dataKey="profit" stroke="#FFD700" strokeWidth={3} dot={{ fill: '#FFD700', r: 4 }} />
