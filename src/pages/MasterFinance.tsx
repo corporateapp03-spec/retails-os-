@@ -51,11 +51,54 @@ export default function MasterFinance() {
   const [loanAmount, setLoanAmount] = useState(10000);
   const [loanDuration, setLoanDuration] = useState(12);
   const [isExporting, setIsExporting] = useState(false);
+  const [pin, setPin] = useState('');
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (isAuthorized) {
+      fetchData();
+    }
+  }, [isAuthorized]);
+
+  const handlePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pin === '7007') {
+      setIsAuthorized(true);
+    } else {
+      alert('Invalid PIN');
+      setPin('');
+    }
+  };
+
+  if (!isAuthorized) {
+    return (
+      <div className="flex items-center justify-center h-[80vh]">
+        <div className="vault-card p-12 w-full max-w-md text-center space-y-8">
+          <div className="w-20 h-20 bg-[#FFD700]/10 rounded-3xl flex items-center justify-center text-[#FFD700] mx-auto shadow-[0_0_30px_rgba(255,215,0,0.1)]">
+            <ShieldCheck size={40} />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Vault Access</h2>
+            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Institutional-Grade Intelligence</p>
+          </div>
+          <form onSubmit={handlePinSubmit} className="space-y-6">
+            <input
+              type="password"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="ENTER PIN"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center text-2xl font-black tracking-[0.5em] text-[#FFD700] outline-none focus:border-[#FFD700]/50 transition-all placeholder:text-slate-800"
+              autoFocus
+            />
+            <button type="submit" className="gold-btn w-full py-4 text-xs font-black uppercase tracking-widest">
+              Authorize Access
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   async function fetchData() {
     setLoading(true);
@@ -83,7 +126,7 @@ export default function MasterFinance() {
     if (!ledger || !ledger.length) return null;
 
     try {
-      // 1. Safety Wrap: Calculation Engine
+      // 1. Unbiased Data: Calculation Engine
       const validLedger = ledger.filter(Boolean);
       const sales = validLedger.filter(e => e.transaction_type === 'sale');
       const expenses = validLedger.filter(e => e.transaction_type === 'expense');
@@ -105,7 +148,24 @@ export default function MasterFinance() {
       const dailyExpenses = (totalExpenses || 0) / (daysDiff || 1);
       const dailyProfit = dailyRevenue - dailyExpenses;
 
-      // 2. 5-Horizon Multiplier
+      // 2. Velocity of Capital (90-Day WDA)
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      const last90DaysLedger = validLedger.filter(e => e.created_at && new Date(e.created_at) >= ninetyDaysAgo);
+      const wdaInflow = last90DaysLedger.filter(e => e.transaction_type === 'sale').reduce((sum, e) => sum + Number(e.amount || 0), 0) / 90;
+      const wdaOutflow = last90DaysLedger.filter(e => e.transaction_type === 'expense').reduce((sum, e) => sum + Number(e.amount || 0), 0) / 90;
+
+      // 3. Stock-to-Sales Correlation
+      const inventoryValue = inventory.reduce((sum, item) => sum + (Number(item.cost_price || 0) * Number(item.quantity || 0)), 0);
+      const monthlyRevenue = dailyRevenue * 30;
+      const stockToSalesRatio = monthlyRevenue > 0 ? inventoryValue / monthlyRevenue : 0;
+      const inventoryTurnoverRatio = inventoryValue > 0 ? monthlyRevenue / inventoryValue : 0;
+
+      // 4. Funding Multiplier
+      const fundingMultiplier = inventoryTurnoverRatio;
+      const projectedMonthlyRevenueIncrease = loanAmount * fundingMultiplier;
+
+      // 5. 5-Horizon Multiplier
       const multiplier: number = {
         daily: 1,
         weekly: 7,
@@ -118,7 +178,7 @@ export default function MasterFinance() {
       const scaledExpenses = dailyExpenses * multiplier;
       const scaledProfit = dailyProfit * multiplier;
 
-      // 3. 3-Pillar Engine Mapping
+      // 6. 3-Pillar Engine Mapping
       const PILLARS = {
         Oil: ['oil', 'lube', 'fluid', 'atf'],
         Spares: ['pad', 'filter', 'plug', 'belt', 'bolt', 'suspension', 'brake', 'hardware', 'gasket', 'engine'],
@@ -175,7 +235,7 @@ export default function MasterFinance() {
         return { name, revenue: sRev, expense: sExp, profit, margin, status, decap: sDecap };
       }).sort((a, b) => b.revenue - a.revenue);
 
-      // 4. Chart Data Preparation
+      // 7. Chart Data Preparation
       const pieData = categoryHealth.map(c => ({
         name: c.name,
         value: c.expense
@@ -184,10 +244,13 @@ export default function MasterFinance() {
       const dailyData = validLedger.reduce((acc, e) => {
         if (!e.created_at) return acc;
         const date = new Date(e.created_at).toLocaleDateString();
-        if (!acc[date]) acc[date] = { date, revenue: 0, expenses: 0 };
+        if (!acc[date]) acc[date] = { date, revenue: 0, expenses: 0, restock: 0 };
         const amount = Number(e.amount || 0);
         if (e.transaction_type === 'sale') acc[date].revenue += amount;
-        else if (e.transaction_type === 'expense') acc[date].expenses += amount;
+        else if (e.transaction_type === 'expense') {
+          acc[date].expenses += amount;
+          if (isRestock(e.description)) acc[date].restock += amount;
+        }
         return acc;
       }, {} as Record<string, any>);
 
@@ -195,9 +258,10 @@ export default function MasterFinance() {
         .map((d: any) => ({ ...d, profit: d.revenue - d.expenses }))
         .slice(-15);
 
-      // 5. Loan Simulation Logic
-      const safeCapacity = Math.max(0, scaledProfit * 0.5);
+      // 8. Risk Mitigation (DSCR)
       const monthlyPayment = (Number(loanAmount) || 0) / Math.max(1, Number(loanDuration) || 1);
+      const dscr = monthlyPayment > 0 ? (dailyProfit * 30) / monthlyPayment : 100;
+      const safeCapacity = Math.max(0, scaledProfit * 0.5);
       
       const requiredPayment = ({
         daily: monthlyPayment / 30,
@@ -225,11 +289,12 @@ export default function MasterFinance() {
         vBorder = 'border-amber-500/20';
       }
 
-      // 6. Growth Projection
-      const projectedProfit = scaledProfit * 1.25; // 25% Growth Simulation
+      // 9. Simulated ROI (Funded Path)
+      const fundedMonthlyRevenue = monthlyRevenue + projectedMonthlyRevenueIncrease;
+      const fundedMonthlyProfit = fundedMonthlyRevenue - (dailyExpenses * 30);
       const growthData = [
-        { name: 'Current', profit: scaledProfit },
-        { name: 'Projected', profit: projectedProfit }
+        { name: 'Current Path', profit: scaledProfit },
+        { name: 'Funded Path', profit: (fundedMonthlyProfit / 30) * multiplier }
       ];
 
       return {
@@ -246,13 +311,22 @@ export default function MasterFinance() {
         vBorder,
         growthData,
         categoryHealth,
-        growthPercentage: scaledProfit !== 0 ? ((projectedProfit - scaledProfit) / Math.abs(scaledProfit)) * 100 : 0
+        wdaInflow,
+        wdaOutflow,
+        inventoryValue,
+        stockToSalesRatio,
+        inventoryTurnoverRatio,
+        fundingMultiplier,
+        projectedMonthlyRevenueIncrease,
+        dscr,
+        growthPercentage: scaledProfit !== 0 ? ((growthData[1].profit - scaledProfit) / Math.abs(scaledProfit)) * 100 : 0,
+        multiplier
       };
     } catch (err) {
       console.error('Analytics Engine Error:', err);
       return null;
     }
-  }, [ledger, timeRange, loanAmount, loanDuration]);
+  }, [ledger, inventory, timeRange, loanAmount, loanDuration]);
 
   const exportToPDF = async () => {
     if (!analytics) return;
@@ -263,35 +337,38 @@ export default function MasterFinance() {
       const margin = 15;
       let currentY = 20;
 
-      // 1. Header
+      // 1. Header (Institutional Grade)
       pdf.setFillColor(10, 10, 10);
-      pdf.rect(0, 0, pageWidth, 40, 'F');
+      pdf.rect(0, 0, pageWidth, 45, 'F');
       pdf.setTextColor(255, 215, 0);
-      pdf.setFontSize(22);
+      pdf.setFontSize(24);
       pdf.setFont('helvetica', 'bold');
-      pdf.text('RETAIL-OS EXECUTIVE REPORT', margin, 25);
+      pdf.text('INVESTMENT MEMORANDUM', margin, 25);
       
       pdf.setTextColor(150, 150, 150);
-      pdf.setFontSize(10);
-      pdf.text(`FINANCIAL HORIZON: ${timeRange.toUpperCase()}`, margin, 32);
-      pdf.text(`GENERATED: ${new Date().toLocaleString()}`, pageWidth - margin, 32, { align: 'right' });
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text('STRICTLY PRIVATE & CONFIDENTIAL', margin, 32);
+      pdf.text(`REPORT ID: OS-${Math.random().toString(36).substr(2, 9).toUpperCase()}`, margin, 37);
+      pdf.text(`GENERATED: ${new Date().toLocaleString()}`, pageWidth - margin, 37, { align: 'right' });
 
-      currentY = 50;
+      currentY = 55;
 
-      // 2. Key Metrics Table
+      // Section A: Operational Baseline
       pdf.setTextColor(10, 10, 10);
-      pdf.setFontSize(12);
-      pdf.text('EXECUTIVE SUMMARY', margin, currentY);
-      currentY += 5;
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('SECTION A: OPERATIONAL BASELINE (90-DAY WDA)', margin, currentY);
+      currentY += 8;
 
       autoTable(pdf, {
         startY: currentY,
-        head: [['Metric', 'Value', 'Status']],
+        head: [['Metric', 'Historical Average', 'Analysis']],
         body: [
-          ['Projected Revenue', `$${analytics.scaledRevenue.toLocaleString()}`, 'Performance Baseline'],
-          ['Operating Load', `$${analytics.scaledExpenses.toLocaleString()}`, 'Operational Burn'],
-          ['Net Growth Profit', `$${analytics.scaledProfit.toLocaleString()}`, 'Capital Surplus'],
-          ['Repayment Capacity', `$${analytics.safeCapacity.toLocaleString()}`, '50% Profit Buffer']
+          ['Weighted Daily Inflow', `$${analytics.wdaInflow.toLocaleString()}`, 'Cash Velocity'],
+          ['Weighted Daily Outflow', `$${analytics.wdaOutflow.toLocaleString()}`, 'Operational Burn'],
+          ['Inventory Value', `$${analytics.inventoryValue.toLocaleString()}`, 'Liquid Asset Base'],
+          ['Stock-to-Sales Ratio', `${analytics.stockToSalesRatio.toFixed(2)}x`, 'Efficiency Correlation']
         ],
         theme: 'grid',
         headStyles: { fillColor: [20, 20, 20], textColor: [255, 215, 0] },
@@ -300,21 +377,22 @@ export default function MasterFinance() {
 
       currentY = (pdf as any).lastAutoTable.finalY + 15;
 
-      // 3. Pillar Health Table
-      pdf.text('PILLAR HEALTH & CAPITAL REINVESTMENT', margin, currentY);
-      currentY += 5;
+      // Section B: Capital Reinvestment Analysis
+      pdf.setFontSize(14);
+      pdf.text('SECTION B: CAPITAL REINVESTMENT ANALYSIS', margin, currentY);
+      currentY += 8;
 
       autoTable(pdf, {
         startY: currentY,
-        head: [['Pillar', 'Revenue', 'Reinvestment', 'Net Profit', 'Status']],
+        head: [['Pillar', 'Revenue', 'Reinvestment', 'Margin %', 'Asset Growth']],
         body: analytics.categoryHealth
           .filter(cat => ['Oil', 'Spares', 'Electrical'].includes(cat.name))
           .map(cat => [
             cat.name,
             `$${cat.revenue.toLocaleString()}`,
             `$${cat.decap.toLocaleString()}`,
-            `$${cat.profit.toLocaleString()}`,
-            cat.status === 'Stocking Up' ? 'Capital Reinvestment' : 'Healthy'
+            `${cat.margin.toFixed(1)}%`,
+            'Liquid Asset Conversion'
           ]),
         theme: 'striped',
         headStyles: { fillColor: [20, 20, 20], textColor: [255, 215, 0] },
@@ -323,12 +401,39 @@ export default function MasterFinance() {
 
       currentY = (pdf as any).lastAutoTable.finalY + 15;
 
-      // 4. Charts (Captured as small images for memory safety)
+      // Section C: Risk Mitigation (DSCR)
+      pdf.setFontSize(14);
+      pdf.text('SECTION C: RISK MITIGATION & DSCR', margin, currentY);
+      currentY += 8;
+
+      autoTable(pdf, {
+        startY: currentY,
+        head: [['Risk Factor', 'Value', 'Safety Verdict']],
+        body: [
+          ['Debt-Service Coverage Ratio (DSCR)', `${analytics.dscr.toFixed(2)}x`, analytics.dscr > 2 ? 'Institutional Safe' : 'Standard'],
+          ['Safe Repayment Capacity', `$${analytics.safeCapacity.toLocaleString()}`, '50% Profit Buffer'],
+          ['Monthly Loan Obligation', `$${(analytics.requiredPayment / (analytics.multiplier / 30)).toLocaleString()}`, 'Fixed Commitment']
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [20, 20, 20], textColor: [255, 215, 0] },
+        styles: { fontSize: 9 }
+      });
+
+      currentY = (pdf as any).lastAutoTable.finalY + 15;
+
+      // Section D: Simulated ROI
+      pdf.setFontSize(14);
+      pdf.text('SECTION D: SIMULATED ROI & FUNDING MULTIPLIER', margin, currentY);
+      currentY += 5;
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'italic');
+      pdf.text(`"Based on a current Inventory Turnover Ratio of ${analytics.inventoryTurnoverRatio.toFixed(2)}, an infusion of $${loanAmount.toLocaleString()} is mathematically projected to generate $${analytics.projectedMonthlyRevenueIncrease.toLocaleString()} in additional Monthly Revenue."`, margin, currentY + 5, { maxWidth: pageWidth - (margin * 2) });
+      
+      currentY += 15;
+
+      // Charts
       const chartElements = document.querySelectorAll('.recharts-wrapper');
       if (chartElements.length > 0) {
-        pdf.text('FINANCIAL VISUALIZATIONS', margin, currentY);
-        currentY += 5;
-
         for (let i = 0; i < Math.min(chartElements.length, 2); i++) {
           const chart = chartElements[i] as HTMLElement;
           const canvas = await html2canvas(chart, {
@@ -344,12 +449,17 @@ export default function MasterFinance() {
         }
       }
 
-      // 5. Blob Download (Reliable for Android Chrome)
+      // Footer
+      pdf.setFontSize(8);
+      pdf.setTextColor(150, 150, 150);
+      pdf.text('This document is generated by Retail-OS Growth Engine. All projections are based on historical ledger data.', pageWidth / 2, 285, { align: 'center' });
+
+      // Blob Download
       const pdfBlob = pdf.output('blob');
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `RetailOS_Executive_Report_${timeRange.toUpperCase()}.pdf`;
+      link.download = `Investment_Memorandum_${new Date().getTime()}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -509,6 +619,7 @@ export default function MasterFinance() {
                   <YAxis stroke="#4a4a4a" fontSize={10} />
                   <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid rgba(255,215,0,0.2)', borderRadius: '12px' }} />
                   <Line type="monotone" dataKey="profit" stroke="#FFD700" strokeWidth={3} dot={{ fill: '#FFD700', r: 4 }} />
+                  <Line type="monotone" dataKey="restock" stroke="#C0C0C0" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -660,7 +771,7 @@ export default function MasterFinance() {
                 <span className="text-[#FFD700] text-xs font-black">+{analytics.growthPercentage.toFixed(1)}%</span>
               </div>
               <p className="text-[10px] text-slate-500 leading-relaxed italic font-medium">
-                * Simulation assumes a 25% increase in sales velocity if capital is deployed to scale inventory.
+                * Based on a current Inventory Turnover Ratio of {analytics.inventoryTurnoverRatio.toFixed(2)}, an infusion of ${loanAmount.toLocaleString()} is mathematically projected to generate ${analytics.projectedMonthlyRevenueIncrease.toLocaleString()} in additional Monthly Revenue.
               </p>
             </div>
           </div>
