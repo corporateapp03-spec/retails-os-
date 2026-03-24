@@ -35,6 +35,17 @@
     @apply font-sans antialiased transition-colors duration-500 overflow-x-hidden max-w-full;
     background-color: var(--bg-primary);
     color: var(--text-primary);
+    min-width: 0 !important;
+  }
+
+  html {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    position: relative;
+  }
+
+  div, section, main, article, aside, header, footer, nav {
+    min-width: 0 !important;
   }
 
   /* Custom Scrollbar */

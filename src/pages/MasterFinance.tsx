@@ -37,6 +37,7 @@ import {
   Bar
 } from 'recharts';
 import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 
 type TimeRange = 'daily' | 'weekly' | 'monthly' | 'semi-annual' | 'annual';
@@ -127,10 +128,17 @@ export default function MasterFinance() {
       const getPillar = (desc: string | null | undefined) => {
         if (!desc) return 'Other';
         const d = String(desc).toLowerCase();
-        if (PILLARS.Oil.some(k => d.includes(k))) return 'Oil';
-        if (PILLARS.Electrical.some(k => d.includes(k))) return 'Electrical';
-        if (PILLARS.Spares.some(k => d.includes(k))) return 'Spares';
-        return 'Other';
+        
+        switch (true) {
+          case PILLARS.Oil.some(k => d.includes(k)):
+            return 'Oil';
+          case PILLARS.Electrical.some(k => d.includes(k)):
+            return 'Electrical';
+          case PILLARS.Spares.some(k => d.includes(k)):
+            return 'Spares';
+          default:
+            return 'Other';
+        }
       };
 
       const isRestock = (desc: string | null | undefined) => {
@@ -247,23 +255,106 @@ export default function MasterFinance() {
   }, [ledger, timeRange, loanAmount, loanDuration]);
 
   const exportToPDF = async () => {
-    if (!reportRef.current) return;
+    if (!analytics) return;
     setIsExporting(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      const canvas = await html2canvas(reportRef.current, {
-        scale: 2,
-        backgroundColor: '#0a0a0a',
-        useCORS: true,
-        allowTaint: true,
-        windowWidth: 1200
-      });
-      const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-      pdf.save(`RetailOS_Executive_Report_${timeRange.toUpperCase()}.pdf`);
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 15;
+      let currentY = 20;
+
+      // 1. Header
+      pdf.setFillColor(10, 10, 10);
+      pdf.rect(0, 0, pageWidth, 40, 'F');
+      pdf.setTextColor(255, 215, 0);
+      pdf.setFontSize(22);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('RETAIL-OS EXECUTIVE REPORT', margin, 25);
+      
+      pdf.setTextColor(150, 150, 150);
+      pdf.setFontSize(10);
+      pdf.text(`FINANCIAL HORIZON: ${timeRange.toUpperCase()}`, margin, 32);
+      pdf.text(`GENERATED: ${new Date().toLocaleString()}`, pageWidth - margin, 32, { align: 'right' });
+
+      currentY = 50;
+
+      // 2. Key Metrics Table
+      pdf.setTextColor(10, 10, 10);
+      pdf.setFontSize(12);
+      pdf.text('EXECUTIVE SUMMARY', margin, currentY);
+      currentY += 5;
+
+      autoTable(pdf, {
+        startY: currentY,
+        head: [['Metric', 'Value', 'Status']],
+        body: [
+          ['Projected Revenue', `$${analytics.scaledRevenue.toLocaleString()}`, 'Performance Baseline'],
+          ['Operating Load', `$${analytics.scaledExpenses.toLocaleString()}`, 'Operational Burn'],
+          ['Net Growth Profit', `$${analytics.scaledProfit.toLocaleString()}`, 'Capital Surplus'],
+          ['Repayment Capacity', `$${analytics.safeCapacity.toLocaleString()}`, '50% Profit Buffer']
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [20, 20, 20], textColor: [255, 215, 0] },
+        styles: { fontSize: 9, cellPadding: 4 }
+      });
+
+      currentY = (pdf as any).lastAutoTable.finalY + 15;
+
+      // 3. Pillar Health Table
+      pdf.text('PILLAR HEALTH & CAPITAL REINVESTMENT', margin, currentY);
+      currentY += 5;
+
+      autoTable(pdf, {
+        startY: currentY,
+        head: [['Pillar', 'Revenue', 'Reinvestment', 'Net Profit', 'Status']],
+        body: analytics.categoryHealth
+          .filter(cat => ['Oil', 'Spares', 'Electrical'].includes(cat.name))
+          .map(cat => [
+            cat.name,
+            `$${cat.revenue.toLocaleString()}`,
+            `$${cat.decap.toLocaleString()}`,
+            `$${cat.profit.toLocaleString()}`,
+            cat.status === 'Stocking Up' ? 'Capital Reinvestment' : 'Healthy'
+          ]),
+        theme: 'striped',
+        headStyles: { fillColor: [20, 20, 20], textColor: [255, 215, 0] },
+        styles: { fontSize: 8 }
+      });
+
+      currentY = (pdf as any).lastAutoTable.finalY + 15;
+
+      // 4. Charts (Captured as small images for memory safety)
+      const chartElements = document.querySelectorAll('.recharts-wrapper');
+      if (chartElements.length > 0) {
+        pdf.text('FINANCIAL VISUALIZATIONS', margin, currentY);
+        currentY += 5;
+
+        for (let i = 0; i < Math.min(chartElements.length, 2); i++) {
+          const chart = chartElements[i] as HTMLElement;
+          const canvas = await html2canvas(chart, {
+            scale: 1.5,
+            backgroundColor: '#0a0a0a',
+            logging: false
+          });
+          const imgData = canvas.toDataURL('image/png', 0.7);
+          const imgWidth = (pageWidth - (margin * 2)) / 2 - 5;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          
+          pdf.addImage(imgData, 'PNG', margin + (i * (imgWidth + 10)), currentY, imgWidth, imgHeight);
+        }
+      }
+
+      // 5. Blob Download (Reliable for Android Chrome)
+      const pdfBlob = pdf.output('blob');
+      const url = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `RetailOS_Executive_Report_${timeRange.toUpperCase()}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
     } catch (err) {
       console.error('PDF Export Error:', err);
     } finally {
@@ -529,7 +620,17 @@ export default function MasterFinance() {
               disabled={isExporting}
               className="w-full mt-8 gold-btn py-4 flex items-center justify-center gap-3 disabled:opacity-50 min-h-[48px]"
             >
-              {isExporting ? <RefreshCw className="animate-spin" size={18} /> : <><Download size={18} /> Export Executive Report</>}
+              {isExporting ? (
+                <>
+                  <RefreshCw className="animate-spin" size={18} />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <>
+                  <Download size={18} />
+                  <span>Export Executive Report</span>
+                </>
+              )}
             </button>
           </div>
 
