@@ -45,6 +45,8 @@ type TimeRange = 'daily' | 'weekly' | 'monthly' | 'semi-annual' | 'annual';
 export default function MasterFinance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mathError, setMathError] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>('monthly');
@@ -103,6 +105,7 @@ export default function MasterFinance() {
   async function fetchData() {
     setLoading(true);
     setError(null);
+    setDataLoaded(false);
     try {
       const [inventoryRes, ledgerRes] = await Promise.all([
         supabase.from('inventory').select('*'),
@@ -114,6 +117,7 @@ export default function MasterFinance() {
 
       setInventory(inventoryRes.data || []);
       setLedger(ledgerRes.data || []);
+      setDataLoaded(true);
     } catch (err) {
       console.error('Error fetching financial data:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch financial data');
@@ -152,7 +156,7 @@ export default function MasterFinance() {
       multiplier: 30
     };
 
-    if (!ledger || !ledger.length) return defaultAnalytics;
+    if (!dataLoaded || !ledger || !ledger.length) return defaultAnalytics;
 
     try {
       const safeNum = (val: any) => {
@@ -164,6 +168,16 @@ export default function MasterFinance() {
       const validLedger = ledger.filter(Boolean);
       const sales = validLedger.filter(e => e.transaction_type === 'sale');
       const expenses = validLedger.filter(e => e.transaction_type === 'expense');
+
+      // Last 30 Days Weighted Average for Funded Projections
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const last30DaysLedger = validLedger.filter(e => e.created_at && new Date(e.created_at) >= thirtyDaysAgo);
+      const monthlyRevenue30 = (last30DaysLedger.filter(e => e.transaction_type === 'sale').reduce((sum, e) => sum + safeNum(e.amount), 0) / 30) * 30;
+      const monthlyExpenses30 = (last30DaysLedger.filter(e => e.transaction_type === 'expense').reduce((sum, e) => sum + safeNum(e.amount), 0) / 30) * 30;
+      const dailyRevenue30 = monthlyRevenue30 / 30;
+      const dailyExpenses30 = monthlyExpenses30 / 30;
+      const dailyProfit30 = dailyRevenue30 - dailyExpenses30;
 
       const totalRevenue = sales.reduce((sum, e) => sum + safeNum(e.amount), 0);
       const totalExpenses = expenses.reduce((sum, e) => sum + safeNum(e.amount), 0);
@@ -178,9 +192,9 @@ export default function MasterFinance() {
       const maxDate = Math.max(...dates);
       const daysDiff = Math.max(1, Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)));
 
-      const dailyRevenue = totalRevenue / daysDiff;
-      const dailyExpenses = totalExpenses / daysDiff;
-      const dailyProfit = dailyRevenue - dailyExpenses;
+      const dailyRevenueActual = totalRevenue / daysDiff;
+      const dailyExpensesActual = totalExpenses / daysDiff;
+      const dailyProfitActual = dailyRevenueActual - dailyExpensesActual;
 
       // 2. Velocity of Capital (90-Day WDA)
       const ninetyDaysAgo = new Date();
@@ -191,9 +205,9 @@ export default function MasterFinance() {
 
       // 3. Stock-to-Sales Correlation
       const inventoryValue = inventory.reduce((sum, item) => sum + (safeNum(item.cost_price) * safeNum(item.quantity)), 0);
-      const monthlyRevenue = dailyRevenue * 30;
-      const stockToSalesRatio = monthlyRevenue > 0 ? inventoryValue / monthlyRevenue : 0;
-      const inventoryTurnoverRatio = inventoryValue > 0 ? monthlyRevenue / inventoryValue : 0;
+      const monthlyRevenueCalc = dailyRevenueActual * 30;
+      const stockToSalesRatio = monthlyRevenueCalc > 0 ? inventoryValue / monthlyRevenueCalc : 0;
+      const inventoryTurnoverRatio = inventoryValue > 0 ? monthlyRevenueCalc / inventoryValue : 0;
 
       // 4. Funding Multiplier
       const fundingMultiplier = inventoryTurnoverRatio;
@@ -208,9 +222,9 @@ export default function MasterFinance() {
         annual: 365
       }[timeRange] || 30;
 
-      const scaledRevenue = dailyRevenue * multiplier;
-      const scaledExpenses = dailyExpenses * multiplier;
-      const scaledProfit = dailyProfit * multiplier;
+      const scaledRevenue = dailyRevenueActual * multiplier;
+      const scaledExpenses = dailyExpensesActual * multiplier;
+      const scaledProfit = dailyProfitActual * multiplier;
 
       // 6. 3-Pillar Engine Mapping
       const PILLARS = {
@@ -257,14 +271,14 @@ export default function MasterFinance() {
         return acc;
       }, {} as Record<string, { revenue: number, expense: number, decap: number }>);
 
-      const categoryHealth = ['Oil', 'Spares', 'Electrical', 'Other'].map(name => {
+      const categoryHealth = ['Oil', 'Spares', 'Electrical'].map(name => {
         const stats = pillarStats[name] || { revenue: 0, expense: 0, decap: 0 };
         const sRev = (stats.revenue / (daysDiff || 1)) * multiplier;
         const sExp = (stats.expense / (daysDiff || 1)) * multiplier;
         const sDecap = (stats.decap / (daysDiff || 1)) * multiplier;
         const profit = sRev - sExp;
         const margin = sRev > 0 ? (profit / sRev) * 100 : 0;
-        const status = sDecap > sRev ? 'Stocking Up' : 'Healthy';
+        const status = sRev === 0 ? 'Expansion Opportunity' : (sDecap > sRev ? 'Asset Reinvestment' : 'Healthy');
 
         return { name, revenue: sRev, expense: sExp, profit, margin, status, decap: sDecap };
       }).sort((a, b) => b.revenue - a.revenue);
@@ -296,7 +310,7 @@ export default function MasterFinance() {
 
       // 8. Risk Mitigation (DSCR)
       const monthlyPayment = Math.max(1, safeNum(loanAmount) / Math.max(1, safeNum(loanDuration)));
-      const dscr = monthlyPayment > 0 ? (dailyProfit * 30) / monthlyPayment : 100;
+      const dscr = monthlyPayment > 0 ? (dailyProfitActual * 30) / monthlyPayment : 100;
       const safeCapacity = Math.max(0, scaledProfit * 0.5);
       
       const requiredPayment = ({
@@ -326,8 +340,8 @@ export default function MasterFinance() {
       }
 
       // 9. Simulated ROI (Funded Path)
-      const fundedMonthlyRevenue = monthlyRevenue + projectedMonthlyRevenueIncrease;
-      const fundedMonthlyProfit = fundedMonthlyRevenue - (dailyExpenses * 30);
+      const fundedMonthlyRevenue = monthlyRevenue30 + projectedMonthlyRevenueIncrease;
+      const fundedMonthlyProfit = fundedMonthlyRevenue - monthlyExpenses30;
       const growthData = [
         { name: 'Current Path', profit: scaledProfit },
         { name: 'Funded Path', profit: (fundedMonthlyProfit / 30) * multiplier }
@@ -360,6 +374,7 @@ export default function MasterFinance() {
       };
     } catch (err) {
       console.error('Analytics Engine Error:', err);
+      setMathError(true);
       return defaultAnalytics;
     }
   }, [ledger, inventory, timeRange, loanAmount, loanDuration]);
@@ -507,6 +522,17 @@ export default function MasterFinance() {
       setIsExporting(false);
     }
   };
+
+  if (mathError) {
+    return (
+      <div className="vault-card p-12 text-center max-w-lg mx-auto mt-10 border-[#FFD700]/20">
+        <RefreshCw className="text-[#FFD700] mx-auto mb-6 animate-spin" size={48} />
+        <h3 className="text-white font-black uppercase tracking-tighter text-xl mb-2">Data Recalculating</h3>
+        <p className="text-slate-500 text-sm mb-8 leading-relaxed">The Growth Engine is re-aligning financial vectors. Please wait...</p>
+        <button onClick={() => { setMathError(false); fetchData(); }} className="gold-btn w-full py-4 min-h-[48px]">Force Re-Sync</button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -833,7 +859,9 @@ export default function MasterFinance() {
                     <h5 className="text-white font-black uppercase tracking-tighter text-lg">{cat.name}</h5>
                     <span className={cn(
                       "px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest",
-                      cat.status === 'Healthy' ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"
+                      cat.status === 'Healthy' ? "bg-emerald-500/10 text-emerald-500" : 
+                      cat.status === 'Expansion Opportunity' ? "bg-[#FFD700]/10 text-[#FFD700]" :
+                      "bg-amber-500/10 text-amber-500"
                     )}>
                       {cat.status}
                     </span>
@@ -850,7 +878,7 @@ export default function MasterFinance() {
                     <p className="text-white font-bold text-xs">${cat.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest mb-1">Reinvestment</p>
+                    <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest mb-1">Asset Reinvestment</p>
                     <p className="text-amber-500 font-bold text-xs">${cat.decap.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
                   </div>
                   <div>

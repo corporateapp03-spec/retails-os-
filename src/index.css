@@ -9,6 +9,11 @@
 }
 
 @layer base {
+  * {
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+  }
+
   :root {
     --bg-primary: #0a0a0a;
     --bg-secondary: #050505;

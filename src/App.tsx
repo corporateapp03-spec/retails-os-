@@ -26,6 +26,7 @@ import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import PinGuard from './components/PinGuard';
 import ThemeSwitcher from './components/ThemeSwitcher';
+import { SafeRender } from './components/SafeRender';
 
 type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'reports' | 'master-finance';
 
@@ -109,7 +110,11 @@ export default function App() {
   }
 
   if (!session) {
-    return <Login />;
+    return (
+      <SafeRender>
+        <Login />
+      </SafeRender>
+    );
   }
 
   const navItems = [
@@ -123,7 +128,8 @@ export default function App() {
   ];
 
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden selection:bg-[#FFD700]/30">
+    <SafeRender>
+      <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden selection:bg-[#FFD700]/30">
       {/* Sidebar */}
       <aside 
         className={cn(
@@ -235,5 +241,6 @@ export default function App() {
         </div>
       </main>
     </div>
+    </SafeRender>
   );
 }
