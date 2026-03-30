@@ -73,35 +73,6 @@ export default function MasterFinance() {
     }
   };
 
-  if (!isAuthorized) {
-    return (
-      <div className="flex items-center justify-center h-[80vh]">
-        <div className="vault-card p-12 w-full max-w-md text-center space-y-8">
-          <div className="w-20 h-20 bg-[#FFD700]/10 rounded-3xl flex items-center justify-center text-[#FFD700] mx-auto shadow-[0_0_30px_rgba(255,215,0,0.1)]">
-            <ShieldCheck size={40} />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Vault Access</h2>
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Institutional-Grade Intelligence</p>
-          </div>
-          <form onSubmit={handlePinSubmit} className="space-y-6">
-            <input
-              type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              placeholder="ENTER PIN"
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center text-2xl font-black tracking-[0.5em] text-[#FFD700] outline-none focus:border-[#FFD700]/50 transition-all placeholder:text-slate-800"
-              autoFocus
-            />
-            <button type="submit" className="gold-btn w-full py-4 text-xs font-black uppercase tracking-widest">
-              Authorize Access
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   async function fetchData() {
     setLoading(true);
     setError(null);
@@ -377,7 +348,36 @@ export default function MasterFinance() {
       setMathError(true);
       return defaultAnalytics;
     }
-  }, [ledger, inventory, timeRange, loanAmount, loanDuration]);
+  }, [ledger, inventory, timeRange, loanAmount, loanDuration, dataLoaded]);
+
+  if (!isAuthorized) {
+    return (
+      <div className="flex items-center justify-center h-[80vh]">
+        <div className="vault-card p-12 w-full max-w-md text-center space-y-8">
+          <div className="w-20 h-20 bg-[#FFD700]/10 rounded-3xl flex items-center justify-center text-[#FFD700] mx-auto shadow-[0_0_30px_rgba(255,215,0,0.1)]">
+            <ShieldCheck size={40} />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Vault Access</h2>
+            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Institutional-Grade Intelligence</p>
+          </div>
+          <form onSubmit={handlePinSubmit} className="space-y-6">
+            <input
+              type="password"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="ENTER PIN"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center text-2xl font-black tracking-[0.5em] text-[#FFD700] outline-none focus:border-[#FFD700]/50 transition-all placeholder:text-slate-800"
+              autoFocus
+            />
+            <button type="submit" className="gold-btn w-full py-4 text-xs font-black uppercase tracking-widest">
+              Authorize Access
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   const exportToPDF = async () => {
     if (!analytics) return;
