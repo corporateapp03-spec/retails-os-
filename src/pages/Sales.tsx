@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { LedgerEntry, InventoryItem } from '../types';
 import { 
@@ -189,8 +189,18 @@ export default function Sales() {
     (sale.fund_source || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalProfit = useMemo(() => {
+    return filteredSales.reduce((acc, sale) => {
+      const amount = sale.amount || 0;
+      const costPerUnit = sale.inventory?.cost_price || 0;
+      const quantity = sale.quantity || 1;
+      const totalCost = costPerUnit * quantity;
+      return acc + (amount - totalCost);
+    }, 0);
+  }, [filteredSales]);
+
   // Grouping logic
-  const groupedSales = React.useMemo(() => {
+  const groupedSales = useMemo(() => {
     const groups: { date: string, transactions: { timestamp: string, items: LedgerEntry[] }[] }[] = [];
     
     // Sort sales by date descending
@@ -230,6 +240,28 @@ export default function Sales() {
 
   return (
     <div className="space-y-6">
+      {/* Total Profit KPI Card - Android Fluid */}
+      <div className="w-full flex flex-wrap gap-6" style={{ boxSizing: 'border-box' }}>
+        <div className="flex-1 min-w-0 max-w-full bg-[#0a0a0a] border-2 border-[#FFD700] rounded-3xl p-8 shadow-[0_0_25px_rgba(255,215,0,0.15)] relative overflow-hidden group transition-all duration-500 hover:shadow-[0_0_35px_rgba(255,215,0,0.25)]">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-[#FFD700]/10 blur-[80px] rounded-full -mr-16 -mt-16 animate-pulse" />
+          <div className="relative z-10">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-[#FFD700]/10 rounded-lg">
+                <DollarSign size={20} className="text-[#FFD700]" />
+              </div>
+              <p className="text-[#FFD700] text-xs font-black uppercase tracking-[0.2em]">Total Realized Profit</p>
+            </div>
+            <h2 className="text-5xl font-black mt-2 text-white tracking-tighter">
+              ${totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </h2>
+            <div className="flex items-center gap-2 mt-4">
+              <div className="h-1 w-1 rounded-full bg-[#FFD700] animate-ping" />
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Based on filtered archive results</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Header Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-[#050505] border border-white/5 rounded-3xl p-8 flex items-center justify-between shadow-2xl relative overflow-hidden group">
