@@ -42,26 +42,57 @@ export default function Outflow() {
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch Business Summary for Health Monitor
-      const { data: summaryData, error: summaryError } = await supabase
-        .from('business_summary')
-        .select('*');
+      // 1. Fetch Data in Parallel
+      const [summaryRes, ledgerRes, inventoryRes] = await Promise.all([
+        supabase.from('business_summary').select('*'),
+        supabase.from('ledger').select('*').order('created_at', { ascending: false }),
+        supabase.from('inventory').select('*')
+      ]);
       
-      if (summaryError) throw summaryError;
-      setSummaries(summaryData || []);
+      if (summaryRes.error) console.warn('Business summary view might be missing:', summaryRes.error);
+      
+      const rawSummaries = summaryRes.data || [];
+      const rawLedger = ledgerRes.data || [];
+      const rawInventory = inventoryRes.data || [];
 
-      // 2. Fetch Outflows Archive
-      const { data: ledgerData, error: ledgerError } = await supabase
-        .from('ledger')
-        .select('*')
-        .in('transaction_type', ['expense', 'capital_withdrawal', 'CAPITAL_WITHDRAWAL'])
-        .order('created_at', { ascending: false });
+      setOutflows(rawLedger.filter(l => ['expense', 'capital_withdrawal', 'CAPITAL_WITHDRAWAL'].includes(l.transaction_type || '')));
 
-      if (ledgerError) throw ledgerError;
-      setOutflows(ledgerData || []);
+      if (rawSummaries.length > 0) {
+        setSummaries(rawSummaries);
+        if (!selectedCategoryId) setSelectedCategoryId(rawSummaries[0].category_id);
+      } else {
+        // Fallback calculation
+        const safeNum = (val: any) => {
+          const n = parseFloat(String(val || 0));
+          return isNaN(n) ? 0 : n;
+        };
 
-      if (summaryData && summaryData.length > 0 && !selectedCategoryId) {
-        setSelectedCategoryId(summaryData[0].category_id);
+        const categories = Array.from(new Set(rawInventory.map(i => i.category || 'General')));
+        const fallbackSummaries: BusinessSummary[] = categories.map(cat => {
+          const catLedger = rawLedger.filter(l => {
+            const item = rawInventory.find(i => i.id === l.inventory_item_id);
+            return (item?.category || 'General') === cat;
+          });
+
+          const revenue = catLedger.filter(l => l.transaction_type === 'sale').reduce((sum, l) => sum + safeNum(l.amount), 0);
+          const expenses = catLedger.filter(l => l.transaction_type === 'expense').reduce((sum, l) => sum + safeNum(l.amount), 0);
+          const profit = revenue - expenses;
+          const capital = catLedger.filter(l => l.transaction_type === 'capital_withdrawal').reduce((sum, l) => sum + safeNum(l.amount), 0);
+
+          return {
+            category_id: cat,
+            category_name: cat,
+            total_revenue: revenue,
+            total_expenses: expenses,
+            total_profit: profit,
+            capital_health: 10000 - capital,
+            last_updated: new Date().toISOString()
+          };
+        });
+        setSummaries(fallbackSummaries);
+        if (!selectedCategoryId && fallbackSummaries.length > 0) {
+          setSelectedCategoryId(fallbackSummaries[0].category_id);
+        }
       }
     } catch (err) {
       console.error('Error fetching outflow data:', err);

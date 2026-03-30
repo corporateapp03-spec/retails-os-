@@ -71,14 +71,65 @@ export default function Reports() {
 
   // 1. Data Analytics Engine (Read-Only)
   const analytics = useMemo(() => {
-    if (summaries.length === 0) return null;
+    const defaultAnalytics = {
+      totalRevenue: 0,
+      totalExpenses: 0,
+      netProfit: 0,
+      assetValuation: 0,
+      cashOnHand: 0,
+      fastMoving: [],
+      deadStock: [],
+      deadStockValue: 0,
+      deadStockRatio: 0,
+      salesVelocity: 0,
+      demandVelocity: [],
+      totalCostOfGoodsSold: 0,
+      profitMargin: 0,
+      operationalLoad: 0,
+      refundCount: 0,
+      growthRate: 0,
+      totalAssetValuation: 0,
+      daysInOperation: 1,
+      dailyRevenue: 0,
+      dailyTransactions: 0,
+      dailyUnitsSold: 0,
+      projections: {
+        monthly: { conservative: { revenue: 0, transactions: 0, units: 0 }, base: { revenue: 0, transactions: 0, units: 0 }, aggressive: { revenue: 0, transactions: 0, units: 0 } },
+        semiAnnual: { conservative: { revenue: 0, transactions: 0, units: 0 }, base: { revenue: 0, transactions: 0, units: 0 }, aggressive: { revenue: 0, transactions: 0, units: 0 } },
+        annual: { conservative: { revenue: 0, transactions: 0, units: 0 }, base: { revenue: 0, transactions: 0, units: 0 }, aggressive: { revenue: 0, transactions: 0, units: 0 } }
+      },
+      cogsRatio: 0.6,
+      monthlyFixedExpenses: { rent: 0, salaries: 0, transport: 0, utilities: 0, marketing: 0, misc: 0 },
+      totalMonthlyExpenses: 0,
+      avgTransactionValue: 0,
+      breakEvenMonthly: 0
+    };
 
-    const totalRevenue = summaries.reduce((acc, s) => acc + (s.total_revenue || 0), 0);
-    const totalExpenses = summaries.reduce((acc, s) => acc + (s.total_expenses || 0), 0);
-    const netProfit = summaries.reduce((acc, s) => acc + (s.total_profit || 0), 0);
+    if (ledger.length === 0 && summaries.length === 0) return defaultAnalytics;
 
-    const assetValuation = inventory.reduce((acc, item) => acc + (item.cost_price * item.quantity), 0);
-    const cashOnHand = netProfit; // Use total profit as available cash
+    try {
+      const safeNum = (val: any) => {
+        const n = parseFloat(String(val || 0));
+        return isNaN(n) ? 0 : n;
+      };
+
+      let totalRevenue = 0;
+      let totalExpenses = 0;
+      let netProfit = 0;
+
+      if (summaries.length > 0) {
+        totalRevenue = summaries.reduce((acc, s) => acc + safeNum(s.total_revenue), 0);
+        totalExpenses = summaries.reduce((acc, s) => acc + safeNum(s.total_expenses), 0);
+        netProfit = summaries.reduce((acc, s) => acc + safeNum(s.total_profit), 0);
+      } else {
+        // Fallback to ledger calculation
+        totalRevenue = ledger.filter(l => l.transaction_type === 'sale').reduce((acc, l) => acc + safeNum(l.amount), 0);
+        totalExpenses = ledger.filter(l => l.transaction_type === 'expense').reduce((acc, l) => acc + safeNum(l.amount), 0);
+        netProfit = totalRevenue - totalExpenses;
+      }
+
+      const assetValuation = inventory.reduce((acc, item) => acc + (safeNum(item.cost_price) * safeNum(item.quantity)), 0);
+      const cashOnHand = netProfit; // Use total profit as available cash
 
     // Inventory Velocity
     const salesEntries = ledger.filter(l => l.transaction_type === 'sale');
@@ -95,7 +146,7 @@ export default function Reports() {
     recentSales.forEach(sale => {
       const item = inventory.find(i => i.id === sale.inventory_item_id);
       const cat = item?.category || 'Uncategorized';
-      categoryVelocity[cat] = (categoryVelocity[cat] || 0) + (sale.quantity || 1);
+      categoryVelocity[cat] = (categoryVelocity[cat] || 0) + safeNum(sale.quantity || 1);
     });
     const demandVelocity = Object.entries(categoryVelocity)
       .map(([name, velocity]) => ({ name, velocity }))
@@ -105,7 +156,7 @@ export default function Reports() {
     // 2. Financial: Revenue vs Cost + Profit Margin
     const totalCostOfGoodsSold = salesEntries.reduce((acc, sale) => {
       const item = inventory.find(i => i.id === sale.inventory_item_id);
-      return acc + ((item?.cost_price || 0) * (sale.quantity || 1));
+      return acc + (safeNum(item?.cost_price) * safeNum(sale.quantity || 1));
     }, 0);
     const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalCostOfGoodsSold) / totalRevenue) * 100 : 0;
 
@@ -141,15 +192,15 @@ export default function Reports() {
     // --- NEW INVESTOR-GRADE ANALYTICS ---
     
     // Calculate Days in Operation
-    const dates = ledger.map(l => new Date(l.created_at).getTime());
-    const minDate = Math.min(...dates);
-    const maxDate = Math.max(...dates);
+    const dates = ledger.map(l => l.created_at ? new Date(l.created_at).getTime() : NaN).filter(t => !isNaN(t));
+    const minDate = dates.length > 0 ? Math.min(...dates) : Date.now();
+    const maxDate = dates.length > 0 ? Math.max(...dates) : Date.now();
     const daysInOperation = Math.max(1, Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)));
 
     // Daily Sales Baseline
     const dailyRevenue = totalRevenue / daysInOperation;
     const dailyTransactions = ledger.filter(l => l.transaction_type === 'sale').length / daysInOperation;
-    const dailyUnitsSold = ledger.filter(l => l.transaction_type === 'sale').reduce((acc, l) => acc + (l.quantity || 1), 0) / daysInOperation;
+    const dailyUnitsSold = ledger.filter(l => l.transaction_type === 'sale').reduce((acc, l) => acc + safeNum(l.quantity || 1), 0) / daysInOperation;
 
     // Scenarios
     const scenarios = {
@@ -190,12 +241,12 @@ export default function Reports() {
     // We'll look for 'expense' type in ledger and categorize
     const actualExpenses = ledger.filter(l => l.transaction_type === 'expense');
     const categorizedExpenses = {
-      rent: actualExpenses.filter(e => e.description?.toLowerCase().includes('rent')).reduce((acc, e) => acc + e.amount, 0),
-      salaries: actualExpenses.filter(e => e.description?.toLowerCase().includes('salary') || e.description?.toLowerCase().includes('wage')).reduce((acc, e) => acc + e.amount, 0),
-      transport: actualExpenses.filter(e => e.description?.toLowerCase().includes('transport') || e.description?.toLowerCase().includes('delivery')).reduce((acc, e) => acc + e.amount, 0),
-      utilities: actualExpenses.filter(e => e.description?.toLowerCase().includes('utility') || e.description?.toLowerCase().includes('electricity') || e.description?.toLowerCase().includes('water')).reduce((acc, e) => acc + e.amount, 0),
-      marketing: actualExpenses.filter(e => e.description?.toLowerCase().includes('marketing') || e.description?.toLowerCase().includes('ad')).reduce((acc, e) => acc + e.amount, 0),
-      misc: actualExpenses.filter(e => !['rent', 'salary', 'wage', 'transport', 'delivery', 'utility', 'electricity', 'water', 'marketing', 'ad'].some(k => e.description?.toLowerCase().includes(k))).reduce((acc, e) => acc + e.amount, 0)
+      rent: actualExpenses.filter(e => e.description?.toLowerCase().includes('rent')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      salaries: actualExpenses.filter(e => e.description?.toLowerCase().includes('salary') || e.description?.toLowerCase().includes('wage')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      transport: actualExpenses.filter(e => e.description?.toLowerCase().includes('transport') || e.description?.toLowerCase().includes('delivery')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      utilities: actualExpenses.filter(e => e.description?.toLowerCase().includes('utility') || e.description?.toLowerCase().includes('electricity') || e.description?.toLowerCase().includes('water')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      marketing: actualExpenses.filter(e => e.description?.toLowerCase().includes('marketing') || e.description?.toLowerCase().includes('ad')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      misc: actualExpenses.filter(e => !['rent', 'salary', 'wage', 'transport', 'delivery', 'utility', 'electricity', 'water', 'marketing', 'ad'].some(k => e.description?.toLowerCase().includes(k))).reduce((acc, e) => acc + safeNum(e.amount), 0)
     };
 
     // If actual expenses are 0, we'll use industry benchmarks for the projection report
@@ -235,14 +286,14 @@ export default function Reports() {
       const hasRecentSales = ledger.some(l => 
         l.inventory_item_id === item.id && 
         l.transaction_type === 'sale' && 
-        new Date(l.created_at) > thirtyDaysAgo
+        l.created_at && new Date(l.created_at) > thirtyDaysAgo
       );
       return !hasRecentSales;
     })
-    .sort((a, b) => (b.cost_price * b.quantity) - (a.cost_price * a.quantity))
+    .sort((a, b) => (safeNum(b.cost_price) * safeNum(b.quantity)) - (safeNum(a.cost_price) * safeNum(a.quantity)))
     .slice(0, 15);
 
-    const deadStockValue = deadStock.reduce((acc, item) => acc + (item.cost_price * item.quantity), 0);
+    const deadStockValue = deadStock.reduce((acc, item) => acc + (safeNum(item.cost_price) * safeNum(item.quantity)), 0);
     const deadStockRatio = assetValuation > 0 ? (deadStockValue / assetValuation) : 0;
 
       return {
@@ -274,7 +325,11 @@ export default function Reports() {
         avgTransactionValue,
         breakEvenMonthly
       };
-    }, [summaries, inventory, ledger]);
+    } catch (err) {
+      console.error('Reports Analytics Error:', err);
+      return defaultAnalytics;
+    }
+  }, [summaries, inventory, ledger]);
 
   const handlePartnerAChange = (val: number) => {
     const newA = Math.max(0, Math.min(100, val));
@@ -668,13 +723,14 @@ export default function Reports() {
     );
   }
 
-  if (!analytics || analytics.totalRevenue === 0) {
+  if (!analytics || (analytics.totalRevenue === 0 && analytics.netProfit === 0)) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center">
         <BarChart3 size={64} className="text-slate-800 mb-4" />
-        <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Insufficient Data for Analysis</h2>
+        <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Growth Engine Standby</h2>
         <p className="text-slate-500 mt-2 max-w-md text-sm font-medium">
-          We need more sales and ledger data to generate an executive report. Start processing sales in the POS to see insights here.
+          The Executive Intelligence module requires active sales data to generate strategic insights. 
+          Process your first transactions in the POS to activate the engine.
         </p>
       </div>
     );

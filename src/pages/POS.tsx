@@ -23,6 +23,11 @@ const CATEGORY_MAP: Record<number, string> = {
   3: 'Electrical Spares'
 };
 
+const safeNum = (val: any) => {
+  const n = parseFloat(val);
+  return isNaN(n) ? 0 : n;
+};
+
 interface QueuedSale {
   id: string;
   cart: {item: InventoryItem, quantity: number}[];
@@ -60,7 +65,7 @@ const ProductItem = React.memo(({ item, onAdd }: { item: InventoryItem, onAdd: (
       </div>
       <div className="text-right">
         <p className="font-black text-[#FFD700] text-base md:text-lg">
-          ${(item.selling_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          ${safeNum(item.selling_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </p>
         <p className={cn(
           "text-[10px] font-bold uppercase tracking-widest",
@@ -212,15 +217,15 @@ export default function POS() {
   }, []);
 
   const cartTotal = useMemo(() => 
-    cart.reduce((acc, c) => acc + (c.item.selling_price * c.quantity), 0)
+    cart.reduce((acc, c) => acc + (safeNum(c.item.selling_price) * safeNum(c.quantity)), 0)
   , [cart]);
 
   async function processSale(saleCart: {item: InventoryItem, quantity: number}[], method: string, timestamp: string) {
     const entries = saleCart.map(c => ({
       category_id: c.item.category_id,
       inventory_item_id: c.item.id,
-      quantity: c.quantity,
-      amount: c.item.selling_price * c.quantity,
+      quantity: safeNum(c.quantity),
+      amount: safeNum(c.item.selling_price) * safeNum(c.quantity),
       transaction_type: 'sale' as const,
       fund_source: method,
       description: `Sale: ${c.item.name} (x${c.quantity})`,
@@ -386,7 +391,7 @@ export default function POS() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right font-black text-[#FFD700]">
-                          ${(item.selling_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ${safeNum(item.selling_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </td>
                       </tr>
                     ))}

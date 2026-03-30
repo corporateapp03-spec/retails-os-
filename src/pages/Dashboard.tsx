@@ -6,28 +6,72 @@ import { cn } from '../lib/utils';
 
 export default function Dashboard() {
   const [summaries, setSummaries] = useState<BusinessSummary[]>([]);
+  const [ledger, setLedger] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchSummary() {
+    async function fetchData() {
       try {
         setError(null);
-        const { data, error } = await supabase
-          .from('business_summary')
-          .select('*');
+        const [summaryRes, ledgerRes, inventoryRes] = await Promise.all([
+          supabase.from('business_summary').select('*'),
+          supabase.from('ledger').select('*'),
+          supabase.from('inventory').select('*')
+        ]);
         
-        if (error) throw error;
-        setSummaries(data || []);
+        if (summaryRes.error) console.warn('Business summary view might be missing:', summaryRes.error);
+        
+        const rawSummaries = summaryRes.data || [];
+        const rawLedger = ledgerRes.data || [];
+        const rawInventory = inventoryRes.data || [];
+
+        setLedger(rawLedger);
+        setInventory(rawInventory);
+
+        if (rawSummaries.length > 0) {
+          setSummaries(rawSummaries);
+        } else {
+          // Fallback calculation
+          const safeNum = (val: any) => {
+            const n = parseFloat(String(val || 0));
+            return isNaN(n) ? 0 : n;
+          };
+
+          const categories = Array.from(new Set(rawInventory.map(i => i.category || 'General')));
+          const fallbackSummaries: BusinessSummary[] = categories.map(cat => {
+            const catLedger = rawLedger.filter(l => {
+              const item = rawInventory.find(i => i.id === l.inventory_item_id);
+              return (item?.category || 'General') === cat;
+            });
+
+            const revenue = catLedger.filter(l => l.transaction_type === 'sale').reduce((sum, l) => sum + safeNum(l.amount), 0);
+            const expenses = catLedger.filter(l => l.transaction_type === 'expense').reduce((sum, l) => sum + safeNum(l.amount), 0);
+            const profit = revenue - expenses;
+            const capital = catLedger.filter(l => l.transaction_type === 'capital_withdrawal').reduce((sum, l) => sum + safeNum(l.amount), 0);
+
+            return {
+              category_id: cat,
+              category_name: cat,
+              total_revenue: revenue,
+              total_expenses: expenses,
+              total_profit: profit,
+              capital_health: 10000 - capital, // Assuming 10k initial capital for fallback
+              last_updated: new Date().toISOString()
+            };
+          });
+          setSummaries(fallbackSummaries);
+        }
       } catch (err) {
-        console.error('Error fetching business summary:', err);
+        console.error('Error fetching dashboard data:', err);
         setError((err as any).message || 'Failed to fetch data');
       } finally {
         setLoading(false);
       }
     }
 
-    fetchSummary();
+    fetchData();
   }, []);
 
   if (loading) {

@@ -123,40 +123,74 @@ export default function MasterFinance() {
   }
 
   const analytics = useMemo(() => {
-    if (!ledger || !ledger.length) return null;
+    const defaultAnalytics = {
+      scaledRevenue: 0,
+      scaledExpenses: 0,
+      scaledProfit: 0,
+      pieData: [],
+      trendData: [],
+      safeCapacity: 0,
+      requiredPayment: 0,
+      verdict: 'Safe' as const,
+      vColor: 'text-emerald-500',
+      vBg: 'bg-emerald-500/10',
+      vBorder: 'border-emerald-500/20',
+      growthData: [
+        { name: 'Current Path', profit: 0 },
+        { name: 'Funded Path', profit: 0 }
+      ],
+      categoryHealth: [],
+      wdaInflow: 0,
+      wdaOutflow: 0,
+      inventoryValue: 0,
+      stockToSalesRatio: 0,
+      inventoryTurnoverRatio: 0,
+      fundingMultiplier: 0,
+      projectedMonthlyRevenueIncrease: 0,
+      dscr: 100,
+      growthPercentage: 0,
+      multiplier: 30
+    };
+
+    if (!ledger || !ledger.length) return defaultAnalytics;
 
     try {
+      const safeNum = (val: any) => {
+        const n = parseFloat(String(val || 0));
+        return isNaN(n) ? 0 : n;
+      };
+
       // 1. Unbiased Data: Calculation Engine
       const validLedger = ledger.filter(Boolean);
       const sales = validLedger.filter(e => e.transaction_type === 'sale');
       const expenses = validLedger.filter(e => e.transaction_type === 'expense');
 
-      const totalRevenue = sales.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-      const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      const totalRevenue = sales.reduce((sum, e) => sum + safeNum(e.amount), 0);
+      const totalExpenses = expenses.reduce((sum, e) => sum + safeNum(e.amount), 0);
       
       const dates = validLedger
         .map(e => e.created_at ? new Date(e.created_at).getTime() : NaN)
         .filter(t => !isNaN(t));
       
-      if (dates.length === 0) return null;
+      if (dates.length === 0) return defaultAnalytics;
 
       const minDate = Math.min(...dates);
       const maxDate = Math.max(...dates);
       const daysDiff = Math.max(1, Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)));
 
-      const dailyRevenue = (totalRevenue || 0) / (daysDiff || 1);
-      const dailyExpenses = (totalExpenses || 0) / (daysDiff || 1);
+      const dailyRevenue = totalRevenue / daysDiff;
+      const dailyExpenses = totalExpenses / daysDiff;
       const dailyProfit = dailyRevenue - dailyExpenses;
 
       // 2. Velocity of Capital (90-Day WDA)
       const ninetyDaysAgo = new Date();
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
       const last90DaysLedger = validLedger.filter(e => e.created_at && new Date(e.created_at) >= ninetyDaysAgo);
-      const wdaInflow = last90DaysLedger.filter(e => e.transaction_type === 'sale').reduce((sum, e) => sum + Number(e.amount || 0), 0) / 90;
-      const wdaOutflow = last90DaysLedger.filter(e => e.transaction_type === 'expense').reduce((sum, e) => sum + Number(e.amount || 0), 0) / 90;
+      const wdaInflow = last90DaysLedger.filter(e => e.transaction_type === 'sale').reduce((sum, e) => sum + safeNum(e.amount), 0) / 90;
+      const wdaOutflow = last90DaysLedger.filter(e => e.transaction_type === 'expense').reduce((sum, e) => sum + safeNum(e.amount), 0) / 90;
 
       // 3. Stock-to-Sales Correlation
-      const inventoryValue = inventory.reduce((sum, item) => sum + (Number(item.cost_price || 0) * Number(item.quantity || 0)), 0);
+      const inventoryValue = inventory.reduce((sum, item) => sum + (safeNum(item.cost_price) * safeNum(item.quantity)), 0);
       const monthlyRevenue = dailyRevenue * 30;
       const stockToSalesRatio = monthlyRevenue > 0 ? inventoryValue / monthlyRevenue : 0;
       const inventoryTurnoverRatio = inventoryValue > 0 ? monthlyRevenue / inventoryValue : 0;
@@ -211,7 +245,7 @@ export default function MasterFinance() {
         const pillar = getPillar(e.description);
         if (!acc[pillar]) acc[pillar] = { revenue: 0, expense: 0, decap: 0 };
         
-        const amount = Number(e.amount || 0);
+        const amount = safeNum(e.amount);
         if (e.transaction_type === 'sale') {
           acc[pillar].revenue += amount;
         } else if (e.transaction_type === 'expense') {
@@ -243,9 +277,11 @@ export default function MasterFinance() {
 
       const dailyData = validLedger.reduce((acc, e) => {
         if (!e.created_at) return acc;
-        const date = new Date(e.created_at).toLocaleDateString();
+        const d = new Date(e.created_at);
+        if (isNaN(d.getTime())) return acc;
+        const date = d.toLocaleDateString();
         if (!acc[date]) acc[date] = { date, revenue: 0, expenses: 0, restock: 0 };
-        const amount = Number(e.amount || 0);
+        const amount = safeNum(e.amount);
         if (e.transaction_type === 'sale') acc[date].revenue += amount;
         else if (e.transaction_type === 'expense') {
           acc[date].expenses += amount;
@@ -259,7 +295,7 @@ export default function MasterFinance() {
         .slice(-15);
 
       // 8. Risk Mitigation (DSCR)
-      const monthlyPayment = (Number(loanAmount) || 0) / Math.max(1, Number(loanDuration) || 1);
+      const monthlyPayment = Math.max(1, safeNum(loanAmount) / Math.max(1, safeNum(loanDuration)));
       const dscr = monthlyPayment > 0 ? (dailyProfit * 30) / monthlyPayment : 100;
       const safeCapacity = Math.max(0, scaledProfit * 0.5);
       
@@ -324,7 +360,7 @@ export default function MasterFinance() {
       };
     } catch (err) {
       console.error('Analytics Engine Error:', err);
-      return null;
+      return defaultAnalytics;
     }
   }, [ledger, inventory, timeRange, loanAmount, loanDuration]);
 

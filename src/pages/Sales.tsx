@@ -184,6 +184,11 @@ export default function Sales() {
     }
   }
 
+  const safeNum = (val: any) => {
+    const n = parseFloat(val);
+    return isNaN(n) ? 0 : n;
+  };
+
   const filteredSales = sales.filter(sale => 
     (sale.inventory?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (sale.fund_source || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -191,9 +196,9 @@ export default function Sales() {
 
   const totalProfit = useMemo(() => {
     return filteredSales.reduce((acc, sale) => {
-      const amount = sale.amount || 0;
-      const costPerUnit = sale.inventory?.cost_price || 0;
-      const quantity = sale.quantity || 1;
+      const amount = safeNum(sale.amount);
+      const costPerUnit = safeNum(sale.inventory?.cost_price);
+      const quantity = safeNum(sale.quantity) || 1;
       const totalCost = costPerUnit * quantity;
       return acc + (amount - totalCost);
     }, 0);

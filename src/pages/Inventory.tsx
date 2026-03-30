@@ -96,7 +96,12 @@ export default function Inventory() {
   }
 
   // Pure Reader Logic: Totals are derived from the absolute source of truth (the items array)
-  const totalAssetValue = items.reduce((acc, item) => acc + ((item?.cost_price || 0) * (item?.quantity || 0)), 0);
+  const safeNum = (val: any) => {
+    const n = parseFloat(val);
+    return isNaN(n) ? 0 : n;
+  };
+
+  const totalAssetValue = items.reduce((acc, item) => acc + (safeNum(item?.cost_price) * safeNum(item?.quantity)), 0);
 
   const filteredItems = items.filter(item => 
     (item?.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
@@ -285,12 +290,12 @@ export default function Inventory() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm font-bold text-slate-500">
-                        ${(item?.cost_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        ${safeNum(item?.cost_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm font-black text-[#FFD700]">
-                        ${(item?.selling_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        ${safeNum(item?.selling_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -357,11 +362,11 @@ export default function Inventory() {
                   </div>
                   <div>
                     <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Cost Price</p>
-                    <p className="text-xs font-bold text-slate-500">${item.cost_price.toLocaleString()}</p>
+                    <p className="text-xs font-bold text-slate-500">${safeNum(item.cost_price).toLocaleString()}</p>
                   </div>
                   <div>
                     <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Selling Price</p>
-                    <p className="text-xs font-black text-[#FFD700]">${item.selling_price.toLocaleString()}</p>
+                    <p className="text-xs font-black text-[#FFD700]">${safeNum(item.selling_price).toLocaleString()}</p>
                   </div>
                 </div>
               </div>
