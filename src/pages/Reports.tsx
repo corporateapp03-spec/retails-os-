@@ -237,8 +237,7 @@ export default function Reports() {
     // COGS Estimation (based on existing margin)
     const cogsRatio = totalRevenue > 0 ? totalCostOfGoodsSold / totalRevenue : 0.6; // Fallback to 60% if no data
 
-    // Expense Breakdown (Estimated based on common retail logic if not explicitly in ledger)
-    // We'll look for 'expense' type in ledger and categorize
+    // Expense Breakdown (Derived strictly from ledger)
     const actualExpenses = ledger.filter(l => l.transaction_type === 'expense');
     const categorizedExpenses = {
       rent: actualExpenses.filter(e => e.description?.toLowerCase().includes('rent')).reduce((acc, e) => acc + safeNum(e.amount), 0),
@@ -249,14 +248,13 @@ export default function Reports() {
       misc: actualExpenses.filter(e => !['rent', 'salary', 'wage', 'transport', 'delivery', 'utility', 'electricity', 'water', 'marketing', 'ad'].some(k => e.description?.toLowerCase().includes(k))).reduce((acc, e) => acc + safeNum(e.amount), 0)
     };
 
-    // If actual expenses are 0, we'll use industry benchmarks for the projection report
     const monthlyFixedExpenses = {
-      rent: categorizedExpenses.rent / (daysInOperation / 30) || totalRevenue * 0.1,
-      salaries: categorizedExpenses.salaries / (daysInOperation / 30) || totalRevenue * 0.15,
-      transport: categorizedExpenses.transport / (daysInOperation / 30) || totalRevenue * 0.05,
-      utilities: categorizedExpenses.utilities / (daysInOperation / 30) || totalRevenue * 0.03,
-      marketing: categorizedExpenses.marketing / (daysInOperation / 30) || totalRevenue * 0.05,
-      misc: categorizedExpenses.misc / (daysInOperation / 30) || totalRevenue * 0.02
+      rent: categorizedExpenses.rent / (daysInOperation / 30),
+      salaries: categorizedExpenses.salaries / (daysInOperation / 30),
+      transport: categorizedExpenses.transport / (daysInOperation / 30),
+      utilities: categorizedExpenses.utilities / (daysInOperation / 30),
+      marketing: categorizedExpenses.marketing / (daysInOperation / 30),
+      misc: categorizedExpenses.misc / (daysInOperation / 30)
     };
 
     const totalMonthlyExpenses = Object.values(monthlyFixedExpenses).reduce((acc, v) => acc + v, 0);
@@ -502,24 +500,31 @@ export default function Reports() {
         headStyles: { fillColor: [16, 185, 129] }
       });
 
-      doc.addPage();
-      doc.text('4. Expense Breakdown & Scaling Logic', 14, 22);
-      autoTable(doc, {
-        startY: 27,
-        head: [['Expense Category', 'Monthly Est.', 'Scaling Logic']],
-        body: [
-          ['Rent', `$${analytics.monthlyFixedExpenses.rent.toLocaleString()}`, 'Fixed cost for physical location.'],
-          ['Salaries', `$${analytics.monthlyFixedExpenses.salaries.toLocaleString()}`, 'Scales with transaction volume (+5% per 20% growth).'],
-          ['Transport', `$${analytics.monthlyFixedExpenses.transport.toLocaleString()}`, 'Variable cost tied to inventory restock frequency.'],
-          ['Utilities', `$${analytics.monthlyFixedExpenses.utilities.toLocaleString()}`, 'Semi-variable based on operational hours.'],
-          ['Marketing', `$${analytics.monthlyFixedExpenses.marketing.toLocaleString()}`, 'Discretionary spend to drive aggressive scenario.'],
-          ['Miscellaneous', `$${analytics.monthlyFixedExpenses.misc.toLocaleString()}`, 'Buffer for unexpected operational costs.'],
-        ],
-        theme: 'grid',
-        headStyles: { fillColor: [15, 23, 42] }
-      });
-
-      nextY = (doc as any).lastAutoTable.finalY + 15;
+      if (analytics.totalMonthlyExpenses > 0) {
+        doc.addPage();
+        doc.text('4. Expense Breakdown & Scaling Logic', 14, 22);
+        autoTable(doc, {
+          startY: 27,
+          head: [['Expense Category', 'Monthly Est.', 'Scaling Logic']],
+          body: [
+            ['Rent', `$${analytics.monthlyFixedExpenses.rent.toLocaleString()}`, 'Fixed cost for physical location.'],
+            ['Salaries', `$${analytics.monthlyFixedExpenses.salaries.toLocaleString()}`, 'Scales with transaction volume (+5% per 20% growth).'],
+            ['Transport', `$${analytics.monthlyFixedExpenses.transport.toLocaleString()}`, 'Variable cost tied to inventory restock frequency.'],
+            ['Utilities', `$${analytics.monthlyFixedExpenses.utilities.toLocaleString()}`, 'Semi-variable based on operational hours.'],
+            ['Marketing', `$${analytics.monthlyFixedExpenses.marketing.toLocaleString()}`, 'Discretionary spend to drive aggressive scenario.'],
+            ['Miscellaneous', `$${analytics.monthlyFixedExpenses.misc.toLocaleString()}`, 'Buffer for unexpected operational costs.'],
+          ].filter(row => {
+            const val = parseFloat(row[1].replace('$', '').replace(/,/g, ''));
+            return val > 0;
+          }),
+          theme: 'grid',
+          headStyles: { fillColor: [15, 23, 42] }
+        });
+        nextY = (doc as any).lastAutoTable.finalY + 15;
+      } else {
+        doc.addPage();
+        nextY = 22;
+      }
       doc.text('5. Key Business Metrics', 14, nextY);
       autoTable(doc, {
         startY: nextY + 5,
@@ -1085,35 +1090,42 @@ export default function Reports() {
           </div>
 
           {/* Expense Breakdown & Logic */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            <div className="space-y-6">
-              <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
-                <DollarSign size={16} className="text-rose-500" />
-                Monthly Expense Breakdown
-              </h3>
-              <div className="space-y-3">
-                {Object.entries(analytics.monthlyFixedExpenses).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
-                    <div>
-                      <p className="text-[10px] font-black text-white uppercase tracking-widest">{key}</p>
-                      <p className="text-[8px] text-slate-600 font-bold uppercase">
-                        {key === 'rent' && 'Fixed facility cost'}
-                        {key === 'salaries' && 'Labor & operations'}
-                        {key === 'transport' && 'Logistics & delivery'}
-                        {key === 'utilities' && 'Power & connectivity'}
-                        {key === 'marketing' && 'Growth acquisition'}
-                        {key === 'misc' && 'Operational buffer'}
-                      </p>
-                    </div>
-                    <span className="text-sm font-black text-rose-500">${Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          <div className={cn(
+            "grid gap-12",
+            analytics.totalMonthlyExpenses > 0 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
+          )}>
+            {analytics.totalMonthlyExpenses > 0 && (
+              <div className="space-y-6">
+                <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
+                  <DollarSign size={16} className="text-rose-500" />
+                  Monthly Expense Breakdown
+                </h3>
+                <div className="space-y-3">
+                  {Object.entries(analytics.monthlyFixedExpenses)
+                    .filter(([_, value]) => Number(value) > 0)
+                    .map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
+                        <div>
+                          <p className="text-[10px] font-black text-white uppercase tracking-widest">{key}</p>
+                          <p className="text-[8px] text-slate-600 font-bold uppercase">
+                            {key === 'rent' && 'Fixed facility cost'}
+                            {key === 'salaries' && 'Labor & operations'}
+                            {key === 'transport' && 'Logistics & delivery'}
+                            {key === 'utilities' && 'Power & connectivity'}
+                            {key === 'marketing' && 'Growth acquisition'}
+                            {key === 'misc' && 'Operational buffer'}
+                          </p>
+                        </div>
+                        <span className="text-sm font-black text-rose-500">${Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                      </div>
+                    ))}
+                  <div className="flex items-center justify-between p-4 bg-rose-500/10 rounded-xl border border-rose-500/20">
+                    <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Total Monthly OPEX</span>
+                    <span className="text-sm font-black text-rose-500">${Number(analytics.totalMonthlyExpenses).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                   </div>
-                ))}
-                <div className="flex items-center justify-between p-4 bg-rose-500/10 rounded-xl border border-rose-500/20">
-                  <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Total Monthly OPEX</span>
-                  <span className="text-sm font-black text-rose-500">${Number(analytics.totalMonthlyExpenses).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="space-y-6">
               <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
