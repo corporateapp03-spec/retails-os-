@@ -74,7 +74,10 @@ export default function Reports() {
     const defaultAnalytics = {
       totalRevenue: 0,
       totalExpenses: 0,
+      totalOperationalBurn: 0,
+      totalAssetReinvestment: 0,
       netProfit: 0,
+      netPosition: 0,
       assetValuation: 0,
       cashOnHand: 0,
       fastMoving: [],
@@ -83,6 +86,7 @@ export default function Reports() {
       deadStockRatio: 0,
       salesVelocity: 0,
       demandVelocity: [],
+      pillarHealth: { oil: 0, spares: 0, electrical: 0, other: 0 },
       totalCostOfGoodsSold: 0,
       profitMargin: 0,
       operationalLoad: 0,
@@ -115,25 +119,42 @@ export default function Reports() {
 
       let totalRevenue = 0;
       let totalExpenses = 0;
+      let totalOperationalBurn = 0;
+      let totalAssetReinvestment = 0;
       let netProfit = 0;
 
       // 1. Database Truth: Revenue & Expense Reconciliation
       // Always prefer ledger for granular breakdown to ensure "Database-Truth"
       const ledgerSales = ledger.filter(l => l.transaction_type?.toLowerCase() === 'sale');
       const ledgerExpenses = ledger.filter(l => l.transaction_type?.toLowerCase() === 'expense');
+      const ledgerReinvestments = ledger.filter(l => l.transaction_type?.toLowerCase() === 'capital withdrawal');
+
+      totalOperationalBurn = ledgerExpenses.reduce((acc, l) => acc + safeNum(l.amount), 0);
+      totalAssetReinvestment = ledgerReinvestments.reduce((acc, l) => acc + safeNum(l.amount), 0);
 
       if (summaries.length > 0) {
         totalRevenue = summaries.reduce((acc, s) => acc + safeNum(s.total_revenue), 0);
-        totalExpenses = ledgerExpenses.reduce((acc, l) => acc + safeNum(l.amount), 0); // Use ledger for expenses to match breakdown
+        totalExpenses = totalOperationalBurn; 
         netProfit = totalRevenue - totalExpenses;
       } else {
         totalRevenue = ledgerSales.reduce((acc, l) => acc + safeNum(l.amount), 0);
-        totalExpenses = ledgerExpenses.reduce((acc, l) => acc + safeNum(l.amount), 0);
+        totalExpenses = totalOperationalBurn;
         netProfit = totalRevenue - totalExpenses;
       }
 
       const assetValuation = inventory.reduce((acc, item) => acc + (safeNum(item.cost_price) * safeNum(item.quantity)), 0);
-      const cashOnHand = netProfit; // Use total profit as available cash
+      const cashOnHand = netProfit; 
+
+      // Pillar Health: Oil, Spares, Electrical
+      const pillarHealth = { oil: 0, spares: 0, electrical: 0, other: 0 };
+      ledgerSales.forEach(sale => {
+        const item = inventory.find(i => i.id === sale.inventory_item_id);
+        const cat = (item?.category || '').toLowerCase();
+        if (cat.includes('oil')) pillarHealth.oil += safeNum(sale.amount);
+        else if (cat.includes('spare')) pillarHealth.spares += safeNum(sale.amount);
+        else if (cat.includes('elect')) pillarHealth.electrical += safeNum(sale.amount);
+        else pillarHealth.other += safeNum(sale.amount);
+      });
 
     // Inventory Velocity
     const salesEntries = ledger.filter(l => l.transaction_type === 'sale');
@@ -191,7 +212,11 @@ export default function Reports() {
     const growthRate = previousPeriodRevenue > 0 ? ((currentPeriodRevenue - previousPeriodRevenue) / previousPeriodRevenue) * 100 : 0;
 
     // 6. Executive: Total Asset Valuation
-    const totalAssetValuation = assetValuation + netProfit;
+    // Logic: Capital Reinvestment increases Total Asset Valuation
+    const totalAssetValuation = assetValuation + netProfit + totalAssetReinvestment;
+
+    // Net Position: Total Revenue - (Operating Expenses + COGS)
+    const netPosition = totalRevenue - (totalOperationalBurn + totalCostOfGoodsSold);
 
     // --- NEW INVESTOR-GRADE ANALYTICS ---
     
@@ -293,7 +318,10 @@ export default function Reports() {
       return {
         totalRevenue,
         totalExpenses,
+        totalOperationalBurn,
+        totalAssetReinvestment,
         netProfit,
+        netPosition,
         assetValuation,
         cashOnHand,
         fastMoving,
@@ -302,6 +330,7 @@ export default function Reports() {
         deadStockRatio,
         salesVelocity,
         demandVelocity,
+        pillarHealth,
         totalCostOfGoodsSold,
         profitMargin,
         operationalLoad,
@@ -386,18 +415,22 @@ export default function Reports() {
         head: [['Financial Metric', 'Value']],
         body: [
           ['Total Revenue', `$${analytics.totalRevenue.toLocaleString()}`],
-          ['Total Expenses', `$${analytics.totalExpenses.toLocaleString()}`],
+          ['Operating Expenses (The Burn)', `$${analytics.totalOperationalBurn.toLocaleString()}`],
+          ['Capital Reinvestment (Decapitalization)', `$${analytics.totalAssetReinvestment.toLocaleString()}`],
           ['Net Profit (Summary Pool)', `$${analytics.netProfit.toLocaleString()}`],
+          ['Net Position (Revenue - Burn - COGS)', `$${analytics.netPosition.toLocaleString()}`],
           ['Cash on Hand (Liquidity)', `$${analytics.cashOnHand.toLocaleString()}`],
           ['Total Asset Valuation (Combined)', `$${analytics.totalAssetValuation.toLocaleString()}`],
           ['Profit Margin', `${analytics.profitMargin.toFixed(1)}%`],
           ['Sales Velocity (30d)', `${analytics.salesVelocity.toFixed(2)} sales/day`],
-          ['Growth Rate (MoM)', `${analytics.growthRate.toFixed(1)}%`],
-          ['Refund/Return Count', `${analytics.refundCount}`],
         ],
         theme: 'striped',
         headStyles: { fillColor: [10, 10, 10], textColor: [255, 215, 0] }
       });
+
+      doc.setFontSize(8);
+      doc.setTextColor(100);
+      doc.text('Note: Capital Reinvestment funds are withdrawn from cash to be "deposited" into inventory assets, increasing Total Asset Valuation.', 14, (doc as any).lastAutoTable.finalY + 10);
 
       // 1.5 Strategic Intelligence
       let finalY0 = (doc as any).lastAutoTable.finalY;
@@ -496,32 +529,9 @@ export default function Reports() {
         headStyles: { fillColor: [16, 185, 129] }
       });
 
-      if (analytics.totalMonthlyExpenses > 0) {
-        doc.addPage();
-        doc.text('4. Expense Breakdown & Scaling Logic', 14, 22);
-        autoTable(doc, {
-          startY: 27,
-          head: [['Expense Category', 'Monthly Est.', 'Scaling Logic']],
-          body: [
-            ['Rent', `$${analytics.monthlyFixedExpenses.rent.toLocaleString()}`, 'Fixed cost for physical location.'],
-            ['Salaries', `$${analytics.monthlyFixedExpenses.salaries.toLocaleString()}`, 'Scales with transaction volume (+5% per 20% growth).'],
-            ['Transport', `$${analytics.monthlyFixedExpenses.transport.toLocaleString()}`, 'Variable cost tied to inventory restock frequency.'],
-            ['Utilities', `$${analytics.monthlyFixedExpenses.utilities.toLocaleString()}`, 'Semi-variable based on operational hours.'],
-            ['Marketing', `$${analytics.monthlyFixedExpenses.marketing.toLocaleString()}`, 'Discretionary spend to drive aggressive scenario.'],
-            ['Miscellaneous', `$${analytics.monthlyFixedExpenses.misc.toLocaleString()}`, 'Buffer for unexpected operational costs.'],
-          ].filter(row => {
-            const val = parseFloat(row[1].replace('$', '').replace(/,/g, ''));
-            return val > 0;
-          }),
-          theme: 'grid',
-          headStyles: { fillColor: [15, 23, 42] }
-        });
-        nextY = (doc as any).lastAutoTable.finalY + 15;
-      } else {
-        doc.addPage();
-        nextY = 22;
-      }
-      doc.text('5. Key Business Metrics', 14, nextY);
+      doc.addPage();
+      nextY = 22;
+      doc.text('4. Key Business Metrics', 14, nextY);
       autoTable(doc, {
         startY: nextY + 5,
         head: [['Metric', 'Value', 'Significance']],
@@ -537,7 +547,7 @@ export default function Reports() {
 
       nextY = (doc as any).lastAutoTable.finalY + 15;
       doc.setFontSize(14);
-      doc.text('6. Risk & Investment Case', 14, nextY);
+      doc.text('5. Risk & Investment Case', 14, nextY);
       doc.setFontSize(10);
       doc.text([
         'Risk Analysis:',
@@ -672,16 +682,36 @@ export default function Reports() {
         head: [['Metric', 'Consolidated Value']],
         body: [
           ['Total Gross Revenue', `$${totalRevenue.toLocaleString()}`],
+          ['Weighted Daily Average Revenue', `$${analytics.dailyRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+          ['Gross Margin Efficiency', `${((1 - analytics.cogsRatio) * 100).toFixed(1)}%`],
           ['Total Units Sold', totalItems.toLocaleString()],
           ['Transaction Volume', totalTransactions.toLocaleString()],
-          ['Average Transaction Value', `$${(totalTransactions > 0 ? totalRevenue / totalTransactions : 0).toLocaleString()}`],
+          ['Dead Stock (Locked Capital)', `$${analytics.deadStockValue.toLocaleString()}`],
         ],
         theme: 'striped',
         headStyles: { fillColor: [15, 23, 42] }
       });
 
-      // Category Breakdown
+      // Pillar Health Section
       let finalY = (doc as any).lastAutoTable.finalY;
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Pillar Health (Core Categories)', 14, finalY + 15);
+
+      autoTable(doc, {
+        startY: finalY + 20,
+        head: [['Pillar', 'Revenue Contribution']],
+        body: [
+          ['Oil Products', `$${analytics.pillarHealth.oil.toLocaleString()}`],
+          ['Spares & Parts', `$${analytics.pillarHealth.spares.toLocaleString()}`],
+          ['Electrical Systems', `$${analytics.pillarHealth.electrical.toLocaleString()}`],
+          ['Other Categories', `$${analytics.pillarHealth.other.toLocaleString()}`],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [16, 185, 129] }
+      });
+
+      finalY = (doc as any).lastAutoTable.finalY;
       doc.setFontSize(16);
       doc.setTextColor(15, 23, 42);
       doc.text('Sales Performance by Category', 14, finalY + 15);
@@ -741,6 +771,47 @@ export default function Reports() {
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-8">
+      {/* Gross Operational Flow Card */}
+      <div className="vault-card p-8 bg-gradient-to-br from-slate-900 to-[#0a0a0a] border-l-4 border-[#FFD700] relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-4 opacity-5">
+          <TrendingUp size={120} />
+        </div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-[#FFD700]/10 text-[#FFD700] rounded-xl">
+              <BarChart3 size={24} />
+            </div>
+            <h2 className="text-xl font-black text-white uppercase tracking-tighter">Gross Operational Flow</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="min-width-0 flex-1">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Operational Burn</p>
+              <h3 className="text-3xl font-black text-rose-500 break-all">${analytics.totalOperationalBurn.toLocaleString()}</h3>
+              <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">Actual ledger-recorded expenses</p>
+            </div>
+            
+            <div className="min-width-0 flex-1">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Capital Reinvestment</p>
+              <h3 className="text-3xl font-black text-[#FFD700] break-all">${analytics.totalAssetReinvestment.toLocaleString()}</h3>
+              <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">Decapitalization into inventory assets</p>
+            </div>
+            
+            <div className="min-width-0 flex-1">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Net Position</p>
+              <h3 className="text-3xl font-black text-emerald-500 break-all">${analytics.netPosition.toLocaleString()}</h3>
+              <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">Revenue - (Burn + COGS)</p>
+            </div>
+          </div>
+          
+          <div className="mt-6 pt-6 border-t border-white/5">
+            <p className="text-[9px] text-slate-500 font-medium leading-relaxed">
+              <span className="text-[#FFD700] font-black uppercase">Executive Audit:</span> These funds are withdrawn from cash to be "deposited" into inventory assets, increasing the Total Asset Valuation to <span className="text-white font-black">${analytics.totalAssetValuation.toLocaleString()}</span>. This reflects a strategic shift from liquid cash to appreciating inventory pillars.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -757,7 +828,7 @@ export default function Reports() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300">
+        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300 min-w-0 flex-1">
           <div className="flex items-center justify-between mb-4">
             <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-xl border border-emerald-500/20">
               <TrendingUp size={24} />
@@ -767,12 +838,12 @@ export default function Reports() {
             </span>
           </div>
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Net Profit (Summary)</p>
-          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
+          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors break-all">
             ${analytics.netProfit.toLocaleString()}
           </h3>
         </div>
 
-        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300">
+        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300 min-w-0 flex-1">
           <div className="flex items-center justify-between mb-4">
             <div className="p-2 bg-blue-500/10 text-blue-500 rounded-xl border border-blue-500/20">
               <BarChart3 size={24} />
@@ -782,12 +853,12 @@ export default function Reports() {
             </span>
           </div>
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Growth Rate (MoM)</p>
-          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
+          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors break-all">
             {analytics.growthRate.toFixed(1)}%
           </h3>
         </div>
 
-        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300">
+        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300 min-w-0 flex-1">
           <div className="flex items-center justify-between mb-4">
             <div className="p-2 bg-purple-500/10 text-purple-500 rounded-xl border border-purple-500/20">
               <Package size={24} />
@@ -797,12 +868,12 @@ export default function Reports() {
             </span>
           </div>
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Total Asset Valuation</p>
-          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
+          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors break-all">
             ${analytics.totalAssetValuation.toLocaleString()}
           </h3>
         </div>
 
-        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300">
+        <div className="vault-card p-6 group hover:gold-glow transition-all duration-300 min-w-0 flex-1">
           <div className="flex items-center justify-between mb-4">
             <div className="p-2 bg-amber-500/10 text-amber-500 rounded-xl border border-amber-500/20">
               <AlertTriangle size={24} />
@@ -818,7 +889,7 @@ export default function Reports() {
             )}
           </div>
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Dead Stock Ratio</p>
-          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors">
+          <h3 className="text-2xl font-black text-white mt-1 group-hover:gold-text transition-colors break-all">
             {(analytics.deadStockRatio * 100).toFixed(1)}%
           </h3>
         </div>
@@ -1085,78 +1156,40 @@ export default function Reports() {
             </div>
           </div>
 
-          {/* Expense Breakdown & Logic */}
-          <div className={cn(
-            "grid gap-12",
-            analytics.totalMonthlyExpenses > 0 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
-          )}>
-            {analytics.totalMonthlyExpenses > 0 && (
-              <div className="space-y-6">
-                <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
-                  <DollarSign size={16} className="text-rose-500" />
-                  Monthly Expense Breakdown
-                </h3>
-                <div className="space-y-3">
-                  {Object.entries(analytics.monthlyFixedExpenses)
-                    .filter(([_, value]) => Number(value) > 0)
-                    .map(([key, value]) => (
-                      <div key={key} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
-                        <div>
-                          <p className="text-[10px] font-black text-white uppercase tracking-widest">{key}</p>
-                          <p className="text-[8px] text-slate-600 font-bold uppercase">
-                            {key === 'rent' && 'Fixed facility cost'}
-                            {key === 'salaries' && 'Labor & operations'}
-                            {key === 'transport' && 'Logistics & delivery'}
-                            {key === 'utilities' && 'Power & connectivity'}
-                            {key === 'marketing' && 'Growth acquisition'}
-                            {key === 'misc' && 'Operational buffer'}
-                          </p>
-                        </div>
-                        <span className="text-sm font-black text-rose-500">${Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                      </div>
-                    ))}
-                  <div className="flex items-center justify-between p-4 bg-rose-500/10 rounded-xl border border-rose-500/20">
-                    <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Total Monthly OPEX</span>
-                    <span className="text-sm font-black text-rose-500">${Number(analytics.totalMonthlyExpenses).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                  </div>
-                </div>
+          {/* Key Business Metrics */}
+          <div className="space-y-6">
+            <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-emerald-500" />
+              Key Business Metrics
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center min-w-0 flex-1">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Gross Margin</p>
+                <h4 className="text-2xl font-black text-emerald-500 break-all">{((1 - analytics.cogsRatio) * 100).toFixed(1)}%</h4>
               </div>
-            )}
-
-            <div className="space-y-6">
-              <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-emerald-500" />
-                Key Business Metrics
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Gross Margin</p>
-                  <h4 className="text-2xl font-black text-emerald-500">{((1 - analytics.cogsRatio) * 100).toFixed(1)}%</h4>
-                </div>
-                <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Net Margin</p>
-                  <h4 className="text-2xl font-black text-blue-500">
-                    {analytics.totalRevenue > 0 ? ((analytics.netProfit / analytics.totalRevenue) * 100).toFixed(1) : '0.0'}%
-                  </h4>
-                </div>
-                <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Avg Transaction</p>
-                  <h4 className="text-2xl font-black text-white">${Number(analytics.avgTransactionValue).toLocaleString(undefined, { maximumFractionDigits: 2 })}</h4>
-                </div>
-                <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Monthly Break-even</p>
-                  <h4 className="text-2xl font-black text-[#FFD700]">${Number(analytics.breakEvenMonthly).toLocaleString(undefined, { maximumFractionDigits: 0 })}</h4>
-                </div>
+              <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center min-w-0 flex-1">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Net Margin</p>
+                <h4 className="text-2xl font-black text-blue-500 break-all">
+                  {analytics.totalRevenue > 0 ? ((analytics.netProfit / analytics.totalRevenue) * 100).toFixed(1) : '0.0'}%
+                </h4>
               </div>
-              <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
-                <p className="text-[10px] text-blue-500 font-black uppercase tracking-widest mb-2 flex items-center gap-2">
-                  <TrendingUp size={14} />
-                  Investment Case
-                </p>
-                <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                  The business demonstrates a stable {((1 - analytics.cogsRatio) * 100).toFixed(1)}% gross margin. Projections indicate that scaling inventory in high-velocity categories like <span className="text-white font-black">{analytics.demandVelocity[0]?.name}</span> will drive the aggressive growth scenario. Current break-even is well below base revenue projections, indicating a fundable and scalable model.
-                </p>
+              <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center min-w-0 flex-1">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Avg Transaction</p>
+                <h4 className="text-2xl font-black text-white break-all">${Number(analytics.avgTransactionValue).toLocaleString(undefined, { maximumFractionDigits: 2 })}</h4>
               </div>
+              <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center min-w-0 flex-1">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Monthly Break-even</p>
+                <h4 className="text-2xl font-black text-[#FFD700] break-all">${Number(analytics.breakEvenMonthly).toLocaleString(undefined, { maximumFractionDigits: 0 })}</h4>
+              </div>
+            </div>
+            <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
+              <p className="text-[10px] text-blue-500 font-black uppercase tracking-widest mb-2 flex items-center gap-2">
+                <TrendingUp size={14} />
+                Investment Case
+              </p>
+              <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                The business demonstrates a stable {((1 - analytics.cogsRatio) * 100).toFixed(1)}% gross margin. Projections indicate that scaling inventory in high-velocity categories like <span className="text-white font-black">{analytics.demandVelocity[0]?.name}</span> will drive the aggressive growth scenario. Current break-even is well below base revenue projections, indicating a fundable and scalable model.
+              </p>
             </div>
           </div>
         </div>
