@@ -143,8 +143,7 @@ export default function Reports() {
       }
 
       const assetValuation = inventory.reduce((acc, item) => acc + (safeNum(item.cost_price) * safeNum(item.quantity)), 0);
-      const cashOnHand = netProfit; 
-
+      
       // Pillar Health: Oil, Spares, Electrical
       const pillarHealth = { oil: 0, spares: 0, electrical: 0, other: 0 };
       ledgerSales.forEach(sale => {
@@ -212,11 +211,14 @@ export default function Reports() {
     const growthRate = previousPeriodRevenue > 0 ? ((currentPeriodRevenue - previousPeriodRevenue) / previousPeriodRevenue) * 100 : 0;
 
     // 6. Executive: Total Asset Valuation
-    // Logic: Capital Reinvestment increases Total Asset Valuation
-    const totalAssetValuation = assetValuation + netProfit + totalAssetReinvestment;
+    // Logic: Total Asset Valuation = Inventory Assets + Net Profit
+    const totalAssetValuation = assetValuation + netProfit;
 
     // Net Position: Total Revenue - (Operating Expenses + COGS)
     const netPosition = totalRevenue - (totalOperationalBurn + totalCostOfGoodsSold);
+
+    // Cash on Hand: Net Profit - Capital Withdrawals
+    const cashOnHand = netProfit - totalAssetReinvestment;
 
     // --- NEW INVESTOR-GRADE ANALYTICS ---
     
@@ -416,7 +418,7 @@ export default function Reports() {
         body: [
           ['Total Revenue', `$${analytics.totalRevenue.toLocaleString()}`],
           ['Operating Expenses (The Burn)', `$${analytics.totalOperationalBurn.toLocaleString()}`],
-          ['Capital Reinvestment (Decapitalization)', `$${analytics.totalAssetReinvestment.toLocaleString()}`],
+          ['Capital Withdrawal (Outflow)', `$${analytics.totalAssetReinvestment.toLocaleString()}`],
           ['Net Profit (Summary Pool)', `$${analytics.netProfit.toLocaleString()}`],
           ['Net Position (Revenue - Burn - COGS)', `$${analytics.netPosition.toLocaleString()}`],
           ['Cash on Hand (Liquidity)', `$${analytics.cashOnHand.toLocaleString()}`],
@@ -430,7 +432,7 @@ export default function Reports() {
 
       doc.setFontSize(8);
       doc.setTextColor(100);
-      doc.text('Note: Capital Reinvestment funds are withdrawn from cash to be "deposited" into inventory assets, increasing Total Asset Valuation.', 14, (doc as any).lastAutoTable.finalY + 10);
+      doc.text('Note: Capital Withdrawal represents funds removed from the business pool (e.g., owner draws or external reinvestment).', 14, (doc as any).lastAutoTable.finalY + 10);
 
       // 1.5 Strategic Intelligence
       let finalY0 = (doc as any).lastAutoTable.finalY;
@@ -792,9 +794,9 @@ export default function Reports() {
             </div>
             
             <div className="min-width-0 flex-1">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Capital Reinvestment</p>
-              <h3 className="text-3xl font-black text-[#FFD700] break-all">${analytics.totalAssetReinvestment.toLocaleString()}</h3>
-              <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">Decapitalization into inventory assets</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Capital Withdrawal</p>
+              <h3 className="text-3xl font-black text-amber-500 break-all">${analytics.totalAssetReinvestment.toLocaleString()}</h3>
+              <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">Funds removed from business pool</p>
             </div>
             
             <div className="min-width-0 flex-1">
@@ -806,7 +808,7 @@ export default function Reports() {
           
           <div className="mt-6 pt-6 border-t border-white/5">
             <p className="text-[9px] text-slate-500 font-medium leading-relaxed">
-              <span className="text-[#FFD700] font-black uppercase">Executive Audit:</span> These funds are withdrawn from cash to be "deposited" into inventory assets, increasing the Total Asset Valuation to <span className="text-white font-black">${analytics.totalAssetValuation.toLocaleString()}</span>. This reflects a strategic shift from liquid cash to appreciating inventory pillars.
+              <span className="text-[#FFD700] font-black uppercase">Executive Audit:</span> Capital Withdrawal represents money out of the business pool. Total Asset Valuation is calculated as Inventory Assets + Net Profit, currently totaling <span className="text-white font-black">${analytics.totalAssetValuation.toLocaleString()}</span>.
             </p>
           </div>
         </div>
