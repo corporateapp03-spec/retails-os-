@@ -117,14 +117,18 @@ export default function Reports() {
       let totalExpenses = 0;
       let netProfit = 0;
 
+      // 1. Database Truth: Revenue & Expense Reconciliation
+      // Always prefer ledger for granular breakdown to ensure "Database-Truth"
+      const ledgerSales = ledger.filter(l => l.transaction_type?.toLowerCase() === 'sale');
+      const ledgerExpenses = ledger.filter(l => l.transaction_type?.toLowerCase() === 'expense');
+
       if (summaries.length > 0) {
         totalRevenue = summaries.reduce((acc, s) => acc + safeNum(s.total_revenue), 0);
-        totalExpenses = summaries.reduce((acc, s) => acc + safeNum(s.total_expenses), 0);
-        netProfit = summaries.reduce((acc, s) => acc + safeNum(s.total_profit), 0);
+        totalExpenses = ledgerExpenses.reduce((acc, l) => acc + safeNum(l.amount), 0); // Use ledger for expenses to match breakdown
+        netProfit = totalRevenue - totalExpenses;
       } else {
-        // Fallback to ledger calculation
-        totalRevenue = ledger.filter(l => l.transaction_type === 'sale').reduce((acc, l) => acc + safeNum(l.amount), 0);
-        totalExpenses = ledger.filter(l => l.transaction_type === 'expense').reduce((acc, l) => acc + safeNum(l.amount), 0);
+        totalRevenue = ledgerSales.reduce((acc, l) => acc + safeNum(l.amount), 0);
+        totalExpenses = ledgerExpenses.reduce((acc, l) => acc + safeNum(l.amount), 0);
         netProfit = totalRevenue - totalExpenses;
       }
 
@@ -154,7 +158,7 @@ export default function Reports() {
       .slice(0, 5);
 
     // 2. Financial: Revenue vs Cost + Profit Margin
-    const totalCostOfGoodsSold = salesEntries.reduce((acc, sale) => {
+    const totalCostOfGoodsSold = ledgerSales.reduce((acc, sale) => {
       const item = inventory.find(i => i.id === sale.inventory_item_id);
       return acc + (safeNum(item?.cost_price) * safeNum(sale.quantity || 1));
     }, 0);
@@ -235,34 +239,26 @@ export default function Reports() {
     };
 
     // COGS Estimation (based on existing margin)
-    const cogsRatio = totalRevenue > 0 ? totalCostOfGoodsSold / totalRevenue : 0.6; // Fallback to 60% if no data
+    const cogsRatio = totalRevenue > 0 ? totalCostOfGoodsSold / totalRevenue : 0; 
 
-    // Expense Breakdown (Derived strictly from ledger)
-    const actualExpenses = ledger.filter(l => l.transaction_type === 'expense');
-    const categorizedExpenses = {
-      rent: actualExpenses.filter(e => e.description?.toLowerCase().includes('rent')).reduce((acc, e) => acc + safeNum(e.amount), 0),
-      salaries: actualExpenses.filter(e => e.description?.toLowerCase().includes('salary') || e.description?.toLowerCase().includes('wage')).reduce((acc, e) => acc + safeNum(e.amount), 0),
-      transport: actualExpenses.filter(e => e.description?.toLowerCase().includes('transport') || e.description?.toLowerCase().includes('delivery')).reduce((acc, e) => acc + safeNum(e.amount), 0),
-      utilities: actualExpenses.filter(e => e.description?.toLowerCase().includes('utility') || e.description?.toLowerCase().includes('electricity') || e.description?.toLowerCase().includes('water')).reduce((acc, e) => acc + safeNum(e.amount), 0),
-      marketing: actualExpenses.filter(e => e.description?.toLowerCase().includes('marketing') || e.description?.toLowerCase().includes('ad')).reduce((acc, e) => acc + safeNum(e.amount), 0),
-      misc: actualExpenses.filter(e => !['rent', 'salary', 'wage', 'transport', 'delivery', 'utility', 'electricity', 'water', 'marketing', 'ad'].some(k => e.description?.toLowerCase().includes(k))).reduce((acc, e) => acc + safeNum(e.amount), 0)
-    };
-
+    // Expense Breakdown (Derived strictly from ledger 'expense' entries in the last 30 days)
+    const recentExpenses = ledgerExpenses.filter(l => new Date(l.created_at) > thirtyDaysAgo);
+    
     const monthlyFixedExpenses = {
-      rent: categorizedExpenses.rent / (daysInOperation / 30),
-      salaries: categorizedExpenses.salaries / (daysInOperation / 30),
-      transport: categorizedExpenses.transport / (daysInOperation / 30),
-      utilities: categorizedExpenses.utilities / (daysInOperation / 30),
-      marketing: categorizedExpenses.marketing / (daysInOperation / 30),
-      misc: categorizedExpenses.misc / (daysInOperation / 30)
+      rent: recentExpenses.filter(e => e.description?.toLowerCase().includes('rent')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      salaries: recentExpenses.filter(e => e.description?.toLowerCase().includes('salary') || e.description?.toLowerCase().includes('wage')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      transport: recentExpenses.filter(e => e.description?.toLowerCase().includes('transport') || e.description?.toLowerCase().includes('delivery')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      utilities: recentExpenses.filter(e => e.description?.toLowerCase().includes('utility') || e.description?.toLowerCase().includes('electricity') || e.description?.toLowerCase().includes('water')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      marketing: recentExpenses.filter(e => e.description?.toLowerCase().includes('marketing') || e.description?.toLowerCase().includes('ad')).reduce((acc, e) => acc + safeNum(e.amount), 0),
+      misc: recentExpenses.filter(e => !['rent', 'salary', 'wage', 'transport', 'delivery', 'utility', 'electricity', 'water', 'marketing', 'ad'].some(k => e.description?.toLowerCase().includes(k))).reduce((acc, e) => acc + safeNum(e.amount), 0)
     };
 
     const totalMonthlyExpenses = Object.values(monthlyFixedExpenses).reduce((acc, v) => acc + v, 0);
 
     // Key Metrics
-    const totalTransactions = salesEntries.length;
+    const totalTransactions = ledgerSales.length;
     const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
-    const breakEvenMonthly = totalMonthlyExpenses / (1 - cogsRatio);
+    const breakEvenMonthly = (1 - cogsRatio) > 0 ? totalMonthlyExpenses / (1 - cogsRatio) : 0;
 
     const itemSalesCount: Record<string, number> = {};
     salesEntries.forEach(s => {
@@ -1139,7 +1135,9 @@ export default function Reports() {
                 </div>
                 <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center">
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Net Margin</p>
-                  <h4 className="text-2xl font-black text-blue-500">{((analytics.netProfit / analytics.totalRevenue) * 100).toFixed(1)}%</h4>
+                  <h4 className="text-2xl font-black text-blue-500">
+                    {analytics.totalRevenue > 0 ? ((analytics.netProfit / analytics.totalRevenue) * 100).toFixed(1) : '0.0'}%
+                  </h4>
                 </div>
                 <div className="p-6 bg-white/5 rounded-2xl border border-white/5 text-center">
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Avg Transaction</p>
