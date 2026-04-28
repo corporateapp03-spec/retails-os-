@@ -14,10 +14,14 @@ import {
   Check,
   X,
   ShoppingCart,
-  Loader2
+  Loader2,
+  Download
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Loading from '../components/Loading';
+
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function Sales() {
   const [sales, setSales] = useState<LedgerEntry[]>([]);
@@ -28,6 +32,8 @@ export default function Sales() {
   const [reversingTransactionId, setReversingTransactionId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
+  const [downloadingDate, setDownloadingDate] = useState<string | null>(null);
+  const [reportDate, setReportDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     fetchSales();
@@ -184,6 +190,108 @@ export default function Sales() {
     }
   }
 
+  const downloadDayReport = (dateStr: string, transactions: any[]) => {
+    setDownloadingDate(dateStr);
+    try {
+      const doc = new jsPDF();
+      
+      // Theme matching the app's dark aesthetic but readable on PDF
+      doc.setFillColor(20, 20, 20);
+      doc.rect(0, 0, 210, 297, 'F');
+      
+      doc.setTextColor(255, 215, 0); // Gold
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      doc.text('RETAILOS DAILY SALES REPORT', 15, 25);
+      
+      doc.setTextColor(200, 200, 200);
+      doc.setFontSize(12);
+      doc.text(`Report Period: ${dateStr}`, 15, 35);
+      
+      // Calculate day totals
+      const daySales = transactions.flatMap(t => t.items);
+      const dayRevenue = daySales.reduce((acc, s) => acc + safeNum(s.amount), 0);
+      const dayProfit = daySales.reduce((acc, s) => {
+        const amount = safeNum(s.amount);
+        const cost = safeNum(s.inventory?.cost_price) * (safeNum(s.quantity) || 1);
+        return acc + (amount - cost);
+      }, 0);
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      doc.text(`Daily Revenue: $${dayRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 45);
+      doc.text(`Daily Net Profit: $${dayProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
+      doc.text(`Transaction Count: ${transactions.length}`, 15, 59);
+
+      const tableBody = transactions.flatMap(t => 
+        t.items.map((item: LedgerEntry) => [
+          new Date(t.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
+          item.inventory?.name || item.description || 'Unknown',
+          item.quantity || 1,
+          `$${safeNum(item.amount).toLocaleString()}`,
+          `$${(safeNum(item.amount) - (safeNum(item.inventory?.cost_price) * (safeNum(item.quantity) || 1))).toLocaleString()}`,
+          item.fund_source
+        ])
+      );
+
+      autoTable(doc, {
+        startY: 70,
+        head: [['Time', 'Product', 'Qty', 'Amount', 'Profit', 'Source']],
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillColor: [30, 30, 30], textColor: [255, 215, 0] },
+        bodyStyles: { fillColor: [15, 15, 15], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [25, 25, 25] },
+        margin: { top: 70 }
+      });
+
+      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(8);
+      doc.text('Verified Archive Ledger - RetailOS Financial Engine', 15, doc.internal.pageSize.height - 10);
+
+      doc.save(`Sales_Report_${dateStr.replace(/ /g, '_')}.pdf`);
+    } catch (err) {
+      console.error('PDF Error:', err);
+      setError('Failed to generate PDF report.');
+    } finally {
+      setDownloadingDate(null);
+    }
+  };
+
+  const downloadSpecificDateReport = () => {
+    const selectedDate = new Date(reportDate);
+    const dateStr = selectedDate.toLocaleDateString(undefined, { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    
+    // Find matching sales in the full sales array
+    const matchingSales = sales.filter(s => {
+      const saleDate = new Date(s.created_at);
+      return saleDate.toDateString() === selectedDate.toDateString();
+    });
+
+    if (matchingSales.length === 0) {
+      alert('No sales found for the selected date.');
+      return;
+    }
+
+    // Group items by transaction (timestamp) for the reporter
+    const transactionsMap: Record<string, any[]> = {};
+    matchingSales.forEach(s => {
+      if (!transactionsMap[s.created_at]) transactionsMap[s.created_at] = [];
+      transactionsMap[s.created_at].push(s);
+    });
+
+    const transactions = Object.entries(transactionsMap).map(([timestamp, items]) => ({
+      timestamp,
+      items
+    }));
+
+    downloadDayReport(dateStr, transactions);
+  };
+
   const safeNum = (val: any) => {
     const n = parseFloat(val);
     return isNaN(n) ? 0 : n;
@@ -206,7 +314,12 @@ export default function Sales() {
 
   // Grouping logic
   const groupedSales = useMemo(() => {
-    const groups: { date: string, transactions: { timestamp: string, items: LedgerEntry[] }[] }[] = [];
+    const groups: { 
+      date: string, 
+      revenue: number, 
+      profit: number,
+      transactions: { timestamp: string, items: LedgerEntry[] }[] 
+    }[] = [];
     
     // Sort sales by date descending
     const sortedSales = [...filteredSales].sort((a, b) => 
@@ -223,9 +336,15 @@ export default function Sales() {
 
       let dateGroup = groups.find(g => g.date === dateStr);
       if (!dateGroup) {
-        dateGroup = { date: dateStr, transactions: [] };
+        dateGroup = { date: dateStr, revenue: 0, profit: 0, transactions: [] };
         groups.push(dateGroup);
       }
+
+      // Add to daily totals
+      const amount = safeNum(sale.amount);
+      const cost = safeNum(sale.inventory?.cost_price) * (safeNum(sale.quantity) || 1);
+      dateGroup.revenue += amount;
+      dateGroup.profit += (amount - cost);
 
       let transaction = dateGroup.transactions.find(t => t.timestamp === timestamp);
       if (!transaction) {
@@ -306,7 +425,7 @@ export default function Sales() {
       )}
 
       {/* Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-[#050505] p-6 rounded-[2rem] border border-white/5">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
           <input 
@@ -316,6 +435,24 @@ export default function Sales() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white placeholder:text-slate-700 font-medium"
           />
+        </div>
+
+        <div className="flex items-center gap-3 bg-white/5 p-2 rounded-[1.5rem] border border-white/10">
+          <div className="flex items-center gap-2 pl-3">
+            <Calendar size={16} className="text-slate-500" />
+            <input 
+              type="date"
+              value={reportDate}
+              onChange={(e) => setReportDate(e.target.value)}
+              className="bg-transparent text-white text-xs font-black uppercase outline-none"
+            />
+          </div>
+          <button 
+            onClick={downloadSpecificDateReport}
+            className="px-6 py-2.5 bg-[#FFD700] text-[#0a0a0a] font-black uppercase text-[10px] tracking-widest rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg"
+          >
+            Download Report
+          </button>
         </div>
       </div>
 
@@ -330,14 +467,53 @@ export default function Sales() {
           </div>
         ) : (
           groupedSales.map((dateGroup) => (
-            <div key={dateGroup.date} className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="h-px flex-1 bg-white/5" />
-                <div className="flex items-center gap-2 px-4 py-1.5 bg-white/5 rounded-full border border-white/10">
-                  <Calendar size={14} className="text-[#FFD700]" />
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{dateGroup.date}</span>
+            <div key={dateGroup.date} className="space-y-6">
+              {/* Date Header with Daily Totals and Report Download */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4 px-6 bg-[#050505] border border-white/5 rounded-[2rem] shadow-xl">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-[#FFD700] border border-white/10 shadow-lg">
+                    <Calendar size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-white uppercase tracking-tighter">{dateGroup.date}</h3>
+                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">{dateGroup.transactions.length} Transactions Reconciled</p>
+                  </div>
                 </div>
-                <div className="h-px flex-1 bg-white/5" />
+
+                <div className="flex items-center gap-6">
+                  <div className="text-right px-6 border-r border-white/10 hidden sm:block">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Daily Revenue</p>
+                    <p className="text-xl font-black text-[#FFD700]">${dateGroup.revenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                  </div>
+                  <div className="text-right px-6 border-r border-white/10 hidden sm:block">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Daily Profit</p>
+                    <p className="text-xl font-black text-blue-400">${dateGroup.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                  </div>
+                  <button 
+                    onClick={() => downloadDayReport(dateGroup.date, dateGroup.transactions)}
+                    disabled={downloadingDate === dateGroup.date}
+                    className="flex-shrink-0 flex items-center gap-2 px-6 py-3 bg-[#FFD700] text-[#0a0a0a] font-black uppercase text-[10px] tracking-widest rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,215,0,0.2)] disabled:opacity-50"
+                  >
+                    {downloadingDate === dateGroup.date ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Download size={16} />
+                    )}
+                    <span>Report</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Mobile Totals View */}
+              <div className="grid grid-cols-2 gap-4 sm:hidden px-4">
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Revenue</p>
+                  <p className="text-lg font-black text-[#FFD700]">${dateGroup.revenue.toLocaleString()}</p>
+                </div>
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Profit</p>
+                  <p className="text-lg font-black text-blue-400">${dateGroup.profit.toLocaleString()}</p>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4">
