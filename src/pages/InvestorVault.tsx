@@ -384,81 +384,49 @@ export default function InvestorVault() {
         </div>
       </div>
 
-      {/* Asset Intelligence */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Pillar Performance */}
-        <div className="bg-[#050505] p-8 rounded-[2.5rem] border border-white/5">
-          <h3 className="text-sm font-black uppercase text-slate-400 tracking-widest flex items-center gap-2 mb-8">
-            <PieChart className="text-emerald-500" size={18} />
-            Pillar Performance Audit
-          </h3>
+      {/* Pillar Performance */}
+      <div className="bg-[#050505] p-8 rounded-[2.5rem] border border-white/5">
+        <h3 className="text-sm font-black uppercase text-slate-400 tracking-widest flex items-center gap-2 mb-8">
+          <PieChart className="text-emerald-500" size={18} />
+          Pillar Performance Audit
+        </h3>
 
-          <div className="space-y-4">
-            {audit.pillarPerformance.map((p, i) => (
-              <div key={i} className="p-5 bg-white/5 rounded-3xl border border-white/5 group hover:bg-white/[0.07] transition-all">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl bg-[#0a0a0a] text-white shadow-lg">
-                      <p.icon size={20} style={{ color: p.color }} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-widest text-white">{p.name}</p>
-                      <p className="text-[10px] text-slate-500">Inventory Classification {p.id}</p>
-                    </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {audit.pillarPerformance.map((p, i) => (
+            <div key={i} className="p-5 bg-white/5 rounded-3xl border border-white/5 group hover:bg-white/[0.07] transition-all">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-1 rounded-2xl bg-[#0a0a0a] text-white shadow-lg">
+                    <p.icon size={20} style={{ color: p.color }} />
                   </div>
-                  <div className="text-right">
-                    <p className="text-lg font-black text-white">${p.revenue.toLocaleString()}</p>
-                    <p className="text-[10px] text-emerald-500 font-mono font-bold">REVENUE</p>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-white">{p.name}</p>
+                    <p className="text-[10px] text-slate-500">Inventory Classification {p.id}</p>
                   </div>
                 </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    <span>Capital Absorption</span>
-                    <span className="text-blue-500">${p.reinvestment.toLocaleString()}</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-black rounded-full overflow-hidden">
-                    <div 
-                      className="h-full rounded-full transition-all duration-1000" 
-                      style={{ 
-                        width: `${Math.min(100, (p.reinvestment / (p.revenue || 1)) * 100)}%`,
-                        backgroundColor: p.color 
-                      }} 
-                    />
-                  </div>
+                <div className="text-right">
+                  <p className="text-lg font-black text-white">${p.revenue.toLocaleString()}</p>
+                  <p className="text-[10px] text-emerald-500 font-mono font-bold">REVENUE</p>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Asset Intelligence & Dead Stock */}
-        <div className="bg-[#050505] p-8 rounded-[2.5rem] border border-white/5 relative overflow-hidden">
-          <h3 className="text-sm font-black uppercase text-slate-400 tracking-widest flex items-center gap-2 mb-8">
-            <Boxes className="text-blue-500" size={18} />
-            Asset Intelligence
-          </h3>
-
-          <div className="grid grid-cols-2 gap-4 h-full pb-8">
-            <div className="p-6 bg-blue-500/5 rounded-3xl border border-blue-500/10 flex flex-col justify-center text-center">
-              <p className="text-[10px] font-black uppercase text-slate-600 tracking-widest mb-1">Total Asset Valuation</p>
-              <p className="text-2xl font-black text-white">${audit.totalAssetValuation.toLocaleString()}</p>
-              <p className="text-[8px] text-slate-500 mt-1 uppercase font-mono tracking-tighter">Current Inventory Exit Value</p>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  <span>Capital Absorption</span>
+                  <span className="text-blue-500">${p.reinvestment.toLocaleString()}</span>
+                </div>
+                <div className="w-full h-1.5 bg-black rounded-full overflow-hidden">
+                  <div 
+                    className="h-full rounded-full transition-all duration-1000" 
+                    style={{ 
+                      width: `${Math.min(100, (p.reinvestment / (p.revenue || 1)) * 100)}%`,
+                      backgroundColor: p.color 
+                    }} 
+                  />
+                </div>
+              </div>
             </div>
-
-            <div className="p-6 bg-rose-500/5 rounded-3xl border border-rose-500/10 flex flex-col justify-center text-center">
-              <p className="text-[10px] font-black uppercase text-slate-600 tracking-widest mb-1">Dead Stock Impact</p>
-              <p className="text-2xl font-black text-rose-500">${audit.deadStockValue.toLocaleString()}</p>
-              <p className="text-[8px] text-slate-500 mt-1 uppercase font-mono tracking-tighter">Negative Liquidity Anchor</p>
-            </div>
-
-            <div className="col-span-2 p-6 bg-white/5 rounded-3xl border border-white/10">
-              <p className="text-[10px] font-black uppercase text-slate-600 tracking-widest mb-2">Inventory Audit Note</p>
-              <p className="text-[9px] text-slate-500 italic leading-relaxed">
-                "Verified Logic: Total Asset Valuation is derived strictly from current available physical stock at exit price. No non-inventory reinvestments or projected replenishments are included."
-              </p>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 
