@@ -438,10 +438,10 @@ export default function POS() {
           </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar-gold">
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar-gold">
           {cart.length > 0 ? (
-            cart.map(c => (
-              <div key={c.item.id} className="p-3 bg-white/5 rounded-2xl border border-white/5 animate-in slide-in-from-right-4">
+            [...cart].reverse().map(c => (
+              <div key={c.item.id} className="p-3 bg-white/5 rounded-2xl border border-white/5 animate-in slide-in-from-top-4">
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex-1 mr-2">
                     <p className="font-bold text-white text-sm leading-tight">{c.item.name}</p>
@@ -477,7 +477,7 @@ export default function POS() {
               </div>
             ))
           ) : (
-            <div className="h-full flex flex-col items-center justify-center opacity-10 py-12">
+            <div className="h-full flex flex-col items-center justify-center opacity-10 py-12 flex-1">
               <ShoppingCart size={48} />
               <p className="text-[10px] font-black uppercase tracking-widest mt-4">Empty Cart</p>
             </div>

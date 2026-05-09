@@ -14,8 +14,11 @@ import {
   DollarSign,
   ArrowRight,
   Zap,
-  Target
+  Target,
+  FileText
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { cn } from '../lib/utils';
 import Loading from '../components/Loading';
 
@@ -108,7 +111,7 @@ export default function ProfitDistribution() {
   const addLog = (action: string, details: string) => {
     const newLog: TransactionLog = {
       id: crypto.randomUUID(),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: new Date().toLocaleString(),
       action,
       details,
       profitPool: financials.profitPool
@@ -116,18 +119,113 @@ export default function ProfitDistribution() {
     setLogs(prev => [newLog, ...prev].slice(0, 50)); // Keep last 50
   };
 
+  const finalizeDistribution = () => {
+    if (!isSplitValid) return;
+    
+    const details = `Distributed $${financials.profitPool.toLocaleString()} | A: $${distribution.partnerA.toLocaleString()} (${partnerAShare}%) | B: $${distribution.partnerB.toLocaleString()} (${partnerBShare}%) | Growth: $${distribution.reinvestment.toLocaleString()} (${reinvestmentShare}%)`;
+    
+    addLog('DISTRIBUTION FINALIZED', details);
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    const timestamp = new Date().toLocaleString();
+
+    // Title
+    doc.setFontSize(20);
+    doc.text('Profit Distribution Report', 105, 15, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${timestamp}`, 105, 22, { align: 'center' });
+
+    // Financial Summary Section
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text('Financial Summary', 14, 35);
+    
+    autoTable(doc, {
+      startY: 40,
+      head: [['Metric', 'Value']],
+      body: [
+        ['Total Available Profit', `$${financials.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+        ['Distributable Pool', `$${financials.profitPool.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+        ['Partner A Allocation', `${partnerAShare}% ($${distribution.partnerA.toLocaleString()})`],
+        ['Partner B Allocation', `${partnerBShare}% ($${distribution.partnerB.toLocaleString()})`],
+        ['Reinvestment Growth', `${reinvestmentShare}% ($${distribution.reinvestment.toLocaleString()})`],
+        ['Daily Avg Profit', `$${financials.dailyAvgProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [255, 215, 0], textColor: [0, 0, 0] }
+    });
+
+    // Borrowing Capacity Section
+    doc.setFontSize(14);
+    doc.text('Leverage & Borrowing Projection', 14, (doc as any).lastAutoTable.finalY + 15);
+    
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [['Parameter', 'Detail']],
+      body: [
+        ['Risk Profile', riskProfile.toUpperCase()],
+        ['Repayment Schedule', repaymentInterval.toUpperCase()],
+        ['Max Borrowing Power', `$${borrowingProjection.maxCapacity.toLocaleString(undefined, { maximumFractionDigits: 0 })}`],
+        ['Estimated Payment', `$${borrowingProjection.estimatedPayment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`],
+        ['Daily Debt Commitment', `$${borrowingProjection.dailyCommitment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`],
+        ['Horizon', '36 Months (3 Years)'],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [59, 130, 246] }
+    });
+
+    // Transaction History
+    if (logs.length > 0) {
+      doc.addPage();
+      doc.setFontSize(14);
+      doc.text('Yield Distribution Audit Trail', 14, 20);
+
+      autoTable(doc, {
+        startY: 25,
+        head: [['Timestamp', 'Action', 'Details']],
+        body: logs.map(l => [l.timestamp, l.action, l.details.replace(/\$|\,/g, '$&')]),
+        styles: { fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 40 },
+          1: { cellWidth: 40 },
+          2: { cellWidth: 'auto' }
+        }
+      });
+    }
+
+    doc.save(`Profit-Distribution-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+    addLog('REPORT EXPORTED', 'Generated comprehensive PDF report of all distribution parameters and audit logs.');
+  };
+
   const financials = useMemo(() => {
     const availableProfit = summaries.reduce((acc, s) => acc + (s.total_profit || 0), 0);
     const totalRealized = summaries.reduce((acc, s) => acc + (s.total_revenue || 0), 0);
     
+    // Calculate total days for daily average
+    let totalDays = 1;
+    if (ledger.length > 0) {
+      const dates = ledger.map(l => new Date(l.created_at).getTime()).sort((a, b) => a - b);
+      const start = dates[0];
+      const end = dates[dates.length - 1];
+      const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+      totalDays = Math.max(1, diffDays);
+    }
+
+    const dailyAvgProfit = availableProfit / totalDays;
     const profitPool = availableProfit; // Use full available profit
 
     return {
       netProfit: availableProfit, // "Available Profit" from dashboard
       totalRealized,
-      profitPool
+      profitPool,
+      dailyAvgProfit,
+      totalDays
     };
-  }, [summaries]);
+  }, [summaries, ledger]);
 
   const totalSplit = partnerAShare + partnerBShare + reinvestmentShare;
   const isSplitValid = totalSplit === 100;
@@ -146,33 +244,42 @@ export default function ProfitDistribution() {
 
   // Borrowing Projection
   const borrowingProjection = useMemo(() => {
-    // Risk multipliers based on profit pool
+    // Determine debt service capacity based on 50% of daily profit average
+    const dailyRepaymentPool = financials.dailyAvgProfit * 0.5;
+
     const riskMultipliers: Record<RiskProfile, number> = {
-      safe: 1.5,
-      moderate: 3.0,
-      aggressive: 5.0
+      safe: 0.3,      // Conservative: Uses 30% of the 50% pool
+      moderate: 0.6,  // Balanced: Uses 60% of the 50% pool
+      aggressive: 0.9 // High Leverage: Uses 90% of the 50% pool
     };
 
+    const actualDailyCommitment = dailyRepaymentPool * riskMultipliers[riskProfile];
+    
     // Interest rate variants (annual)
     const baseRate = 0.085; // 8.5%
+    const termYears = 3;
     
-    const maxCapacity = financials.profitPool * riskMultipliers[riskProfile];
+    // Calculation: Total debt capacity over term minus interest factor
+    const totalCommitment = actualDailyCommitment * 365 * termYears;
+    const maxCapacity = totalCommitment / (1 + (baseRate * termYears));
     
     const intervalPayments: Record<RepaymentInterval, number> = {
-      monthly: 12,
-      'semi-annual': 2,
-      annual: 1
+      monthly: 12 * termYears,
+      'semi-annual': 2 * termYears,
+      annual: 1 * termYears
     };
 
-    const paymentsPerYear = intervalPayments[repaymentInterval];
-    const estimatedPayment = (maxCapacity * (1 + baseRate)) / (3 * paymentsPerYear); // 3-year term
+    const totalIntervals = intervalPayments[repaymentInterval];
+    const estimatedPayment = totalCommitment / totalIntervals;
 
     return {
       maxCapacity,
       estimatedPayment,
-      annualRate: (baseRate * 100).toFixed(1)
+      annualRate: (baseRate * 100).toFixed(1),
+      dailyAvg: financials.dailyAvgProfit,
+      dailyCommitment: actualDailyCommitment
     };
-  }, [financials.profitPool, riskProfile, repaymentInterval]);
+  }, [financials.dailyAvgProfit, riskProfile, repaymentInterval]);
 
   // Event handlers with logging
   const handleSplitChange = (type: 'A' | 'B' | 'R', value: number) => {
@@ -227,12 +334,22 @@ export default function ProfitDistribution() {
                     Available Profit: <span className="text-white">${financials.netProfit.toLocaleString()}</span>
                   </p>
                 </div>
+              <div className="flex items-center gap-4">
                 <div className={cn(
                   "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all duration-300",
                   isSplitValid ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500" : "bg-rose-500/10 border-rose-500/30 text-rose-500 animate-pulse"
                 )}>
                   {isSplitValid ? "Status: Verified" : `Invalid: ${totalSplit}%`}
                 </div>
+                {isSplitValid && (
+                  <button 
+                    onClick={finalizeDistribution}
+                    className="px-6 py-2 bg-[#FFD700] text-black text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-white transition-colors"
+                  >
+                    Finalize & Record
+                  </button>
+                )}
+              </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -387,21 +504,27 @@ export default function ProfitDistribution() {
                     <span className="text-[10px] font-black uppercase tracking-[0.3em]">Projection Result</span>
                   </div>
 
-                  <div className="space-y-6">
-                    <div>
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Max Borrowing Power</p>
-                      <p className="text-4xl font-black text-white tracking-tighter">${borrowingProjection.maxCapacity.toLocaleString()}</p>
+                    <div className="space-y-6">
+                      <div>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Max Borrowing Power</p>
+                        <p className="text-4xl font-black text-white tracking-tighter">${borrowingProjection.maxCapacity.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Est. {repaymentInterval} Payment</p>
+                          <p className="text-xl font-black text-blue-500 tracking-tighter">${borrowingProjection.estimatedPayment.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Daily Avg Profit</p>
+                          <p className="text-xl font-black text-white tracking-tighter">${borrowingProjection.dailyAvg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                        </div>
+                      </div>
+                      <div className="pt-4 border-t border-white/5">
+                        <p className="text-[10px] font-bold text-slate-600 uppercase italic tracking-tighter leading-relaxed">
+                          Capacity based on 50% daily yield allocation strategy (${borrowingProjection.dailyCommitment.toLocaleString(undefined, { maximumFractionDigits: 0 })}/day committed to debt service).
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Est. {repaymentInterval} Payment</p>
-                      <p className="text-xl font-black text-blue-500 tracking-tighter">${borrowingProjection.estimatedPayment.toLocaleString()}</p>
-                    </div>
-                    <div className="pt-4 border-t border-white/5">
-                      <p className="text-[10px] font-bold text-slate-600 uppercase italic tracking-tighter">
-                        Calculated at {borrowingProjection.annualRate}% APR over a 36-month horizon for operational expansion.
-                      </p>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -428,39 +551,73 @@ export default function ProfitDistribution() {
             </div>
           </div>
 
-          {/* Activity Log */}
+          {/* Distribution Transaction Report */}
           <div className="vault-card rounded-[2.5rem] border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col max-h-[600px]">
             <div className="p-6 border-b border-white/5 bg-white/5 flex items-center justify-between">
-              <h3 className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-2">
-                <History size={14} className="text-[#FFD700]" />
-                Audit Trail
-              </h3>
-              <button 
-                onClick={() => setLogs([])}
-                className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-tighter"
-              >
-                Clear
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-[#FFD700]/10 rounded-lg">
+                  <History size={14} className="text-[#FFD700]" />
+                </div>
+                <h3 className="text-[10px] font-black text-white uppercase tracking-widest">Yield Distribution Report</h3>
+              </div>
+              <div className="flex items-center gap-4">
+                <p className="text-[10px] font-bold text-slate-500">{logs.filter(l => l.action === 'DISTRIBUTION FINALIZED').length} Records</p>
+                <button 
+                  onClick={exportToPDF}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-black text-white uppercase tracking-widest hover:bg-emerald-500/20 hover:border-emerald-500/30 transition-all"
+                >
+                  <FileText size={12} className="text-emerald-500" />
+                  PDF Report
+                </button>
+                <button 
+                  onClick={() => setLogs([])}
+                  className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-tighter"
+                >
+                  Reset
+                </button>
+              </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-2">
+            <div className="flex-1 overflow-y-auto p-4">
               {logs.length === 0 ? (
-                <div className="py-20 text-center opacity-20">
-                  <History size={32} className="mx-auto mb-2" />
-                  <p className="text-[10px] font-black uppercase tracking-widest">Waiting for Activity</p>
+                <div className="py-24 text-center opacity-20">
+                  <PieChart size={40} className="mx-auto mb-4" />
+                  <p className="text-[10px] font-black uppercase tracking-widest">No Distribution History</p>
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-3">
                   {logs.map((log) => (
-                    <div key={log.id} className="p-4 bg-white/5 rounded-2xl border border-transparent hover:border-white/10 transition-all group scale-95 opacity-80 hover:scale-100 hover:opacity-100">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-[9px] font-black text-[#FFD700] uppercase tracking-widest">{log.action}</span>
-                        <span className="text-[9px] font-bold text-slate-600">{log.timestamp}</span>
+                    <div 
+                      key={log.id} 
+                      className={cn(
+                        "p-5 rounded-2xl border transition-all animate-in zoom-in-95 duration-300",
+                        log.action === 'DISTRIBUTION FINALIZED' 
+                          ? "bg-emerald-500/10 border-emerald-500/20" 
+                          : "bg-white/5 border-white/10 opacity-70"
+                      )}
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <span className={cn(
+                          "text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded",
+                          log.action === 'DISTRIBUTION FINALIZED' ? "bg-emerald-500 text-white" : "text-[#FFD700]"
+                        )}>
+                          {log.action}
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-500 tabular-nums">{log.timestamp}</span>
                       </div>
-                      <p className="text-xs text-slate-400 font-medium leading-relaxed mb-2">{log.details}</p>
-                      <div className="flex items-center gap-1.5">
+                      
+                      <p className={cn(
+                        "text-xs leading-relaxed mb-3",
+                        log.action === 'DISTRIBUTION FINALIZED' ? "text-white font-bold" : "text-slate-400 font-medium"
+                      )}>
+                        {log.details}
+                      </p>
+                      
+                      <div className="flex items-center gap-1.5 pt-3 border-t border-white/5">
                         <DollarSign size={10} className="text-slate-600" />
-                        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">Pool At State: ${log.profitPool.toLocaleString()}</span>
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">
+                          Pool Asset Valuation: ${log.profitPool.toLocaleString()}
+                        </span>
                       </div>
                     </div>
                   ))}
