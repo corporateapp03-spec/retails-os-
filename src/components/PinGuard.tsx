@@ -55,6 +55,29 @@ export default function PinGuard({ children, protectedPages, activePage }: PinGu
     }
   }, [pin]);
 
+  // Global Keyboard Support
+  useEffect(() => {
+    if (!protectedPages.includes(activePage) || isUnlocked) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Numbers 0-9 (top row and numpad)
+      if (/^[0-9]$/.test(e.key)) {
+        handleNumberClick(e.key);
+      }
+      // Backspace to delete
+      else if (e.key === 'Backspace') {
+        handleDelete();
+      }
+      // Enter to submit (though auto-submit handles 4 digits)
+      else if (e.key === 'Enter' && pin.length === 4) {
+        handleSubmit();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pin, protectedPages, activePage, isUnlocked]);
+
   if (!protectedPages.includes(activePage) || isUnlocked) {
     return <>{children}</>;
   }

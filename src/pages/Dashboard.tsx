@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isConfigured } from '../lib/supabase';
 import { BusinessSummary } from '../types';
 import { TrendingUp, Wallet, ArrowDownCircle, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -13,6 +13,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchData() {
+      if (!isConfigured) return;
       try {
         setError(null);
         const [summaryRes, ledgerRes, inventoryRes] = await Promise.all([
@@ -63,9 +64,13 @@ export default function Dashboard() {
           });
           setSummaries(fallbackSummaries);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error fetching dashboard data:', err);
-        setError((err as any).message || 'Failed to fetch data');
+        if (err.message === 'Failed to fetch') {
+          setError('Database connection error. Please check your Supabase secrets and connectivity.');
+        } else {
+          setError(err.message || 'Failed to fetch data');
+        }
       } finally {
         setLoading(false);
       }

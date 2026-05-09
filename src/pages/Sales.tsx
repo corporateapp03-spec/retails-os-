@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isConfigured } from '../lib/supabase';
 import { LedgerEntry, InventoryItem } from '../types';
 import { 
   History, 
@@ -40,6 +40,7 @@ export default function Sales() {
   }, []);
 
   async function fetchSales() {
+    if (!isConfigured) return;
     setLoading(true);
     setError(null);
     try {
@@ -79,9 +80,13 @@ export default function Sales() {
       } else {
         setSales([]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching sales:', err);
-      setError((err as any)?.message || 'Failed to load sales archive.');
+      if (err.message === 'Failed to fetch') {
+        setError('Database connection error. Please check your Supabase secrets and connectivity.');
+      } else {
+        setError(err.message || 'Failed to load sales archive.');
+      }
     } finally {
       setLoading(false);
     }

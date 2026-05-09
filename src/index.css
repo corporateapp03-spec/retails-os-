@@ -101,4 +101,14 @@
     @apply backdrop-blur-xl border rounded-3xl transition-all duration-300;
     border-color: var(--border);
   }
+
+  /* Hide Spinners for Numeric Inputs */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
 }

@@ -2,18 +2,21 @@ import { createClient } from '@supabase/supabase-js';
 
 // @ts-ignore
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-// @ts-ignore
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('CRITICAL ERROR: Supabase credentials missing. The application will not be able to fetch or save data. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment variables.');
+export const isConfigured = supabaseUrl && 
+                   supabaseAnonKey && 
+                   supabaseUrl !== 'your-supabase-url' && 
+                   supabaseAnonKey !== 'your-supabase-anon-key';
+
+if (!isConfigured) {
+  console.warn('CRITICAL WARNING: Supabase is not properly configured. Data operations will fail with "Failed to fetch". Please provide valid VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY secrets.');
 }
 
 // Initialize the Supabase client
-// We use optional chaining and fallbacks to prevent the app from crashing on startup
 export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder',
+  isConfigured ? supabaseUrl : 'https://placeholder-project.supabase.co',
+  isConfigured ? supabaseAnonKey : 'placeholder-key',
   {
     auth: {
       persistSession: false,

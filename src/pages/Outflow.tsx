@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isConfigured } from '../lib/supabase';
 import { Category, BusinessSummary, LedgerEntry } from '../types';
 import { 
   HeartPulse, 
@@ -39,6 +39,7 @@ export default function Outflow() {
   }, []);
 
   async function fetchData() {
+    if (!isConfigured) return;
     setLoading(true);
     setError(null);
     try {
@@ -94,9 +95,13 @@ export default function Outflow() {
           setSelectedCategoryId(fallbackSummaries[0].category_id);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching outflow data:', err);
-      setError((err as any).message || 'Failed to load financial data.');
+      if (err.message === 'Failed to fetch') {
+        setError('Database connection error. Please check your Supabase secrets and connectivity.');
+      } else {
+        setError(err.message || 'Failed to load financial data.');
+      }
     } finally {
       setLoading(false);
     }

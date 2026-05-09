@@ -9,24 +9,26 @@ import {
   Search,
   ShieldCheck,
   PieChart,
+  TrendingUp,
   LogOut,
   User
 } from 'lucide-react';
 import { cn } from './lib/utils';
-import { supabase } from './lib/supabase';
+import { supabase, isConfigured } from './lib/supabase';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import POS from './pages/POS';
 import Sales from './pages/Sales';
 import Outflow from './pages/Outflow';
-import InvestorVault from './pages/InvestorVault';
+import ProfitDistribution from './pages/ProfitDistribution';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import PinGuard from './components/PinGuard';
 import ThemeSwitcher from './components/ThemeSwitcher';
 import { SafeRender } from './components/SafeRender';
+import { AlertTriangle, Key, ExternalLink } from 'lucide-react';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'investor-vault';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'profit-distribution';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -55,11 +57,28 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    // If not configured, we don't even try to get session to avoid "Failed to fetch"
+    if (!isConfigured) {
       setLoading(false);
-    });
+      return;
+    }
+
+    // Check initial session
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+      })
+      .catch((err) => {
+        console.error('Initial session fetch failed:', err);
+        // If it's a fetch error, we might want to flag it
+        if (err.message === 'Failed to fetch') {
+          // This will be caught by the sub-components or we can show a global error
+          // For now we just let it go and components will show their own error states
+        }
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -107,6 +126,57 @@ export default function App() {
     return <ResetPassword onComplete={() => setIsResettingPassword(false)} />;
   }
 
+  if (!isConfigured) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
+        <div className="vault-card p-12 text-center max-w-xl w-full border-[#FFD700]/30 shadow-[0_0_50px_rgba(255,215,0,0.1)]">
+          <div className="w-20 h-20 bg-[#FFD700]/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-[#FFD700]/20">
+            <AlertTriangle className="text-[#FFD700]" size={40} />
+          </div>
+          <h2 className="text-white font-black uppercase tracking-tighter text-3xl mb-4">Connection Required</h2>
+          <p className="text-slate-400 text-sm mb-8 leading-relaxed max-w-md mx-auto font-medium">
+            The RetailOS core is currently disconnected from its central database. To proceed, you must configure your Supabase credentials in the AI Studio Secrets panel.
+          </p>
+          
+          <div className="grid gap-4 mb-10">
+            <div className="bg-white/5 p-4 rounded-2xl border border-white/5 text-left flex items-start gap-4">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
+                <Key className="text-blue-400" size={16} />
+              </div>
+              <div>
+                <p className="text-white text-[10px] font-black uppercase tracking-widest mb-1">VITE_SUPABASE_URL</p>
+                <p className="text-slate-500 text-[10px] font-mono break-all">Your project URL from Supabase dashboard</p>
+              </div>
+            </div>
+            <div className="bg-white/5 p-4 rounded-2xl border border-white/5 text-left flex items-start gap-4">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center shrink-0">
+                <Key className="text-emerald-400" size={16} />
+              </div>
+              <div>
+                <p className="text-white text-[10px] font-black uppercase tracking-widest mb-1">VITE_SUPABASE_ANON_KEY</p>
+                <p className="text-slate-500 text-[10px] font-mono break-all">The "anon" public API key</p>
+              </div>
+            </div>
+          </div>
+
+          <a 
+            href="https://supabase.com" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="gold-btn w-full py-4 flex items-center justify-center gap-3 no-underline"
+          >
+            <ExternalLink size={20} />
+            <span>Launch Supabase Console</span>
+          </a>
+          
+          <p className="text-slate-600 text-[10px] mt-8 uppercase font-black tracking-[0.2em]">
+            System Offline • Standing By for Authorization
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!session) {
     return (
       <SafeRender>
@@ -121,7 +191,7 @@ export default function App() {
     { id: 'pos', label: 'POS', icon: ShoppingCart },
     { id: 'sales', label: 'Sales Archive', icon: History },
     { id: 'outflow', label: 'Outflow Guardian', icon: ShieldCheck },
-    { id: 'investor-vault', label: 'Investor Vault', icon: PieChart },
+    { id: 'profit-distribution', label: 'Profit Distribution', icon: TrendingUp },
   ];
 
   return (
@@ -225,13 +295,13 @@ export default function App() {
           <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
           
           <div className="relative z-10 w-full">
-            <PinGuard protectedPages={['dashboard', 'outflow', 'sales', 'investor-vault']} activePage={activePage}>
+            <PinGuard protectedPages={['dashboard', 'outflow', 'sales', 'profit-distribution']} activePage={activePage}>
               {activePage === 'dashboard' && <Dashboard />}
               {activePage === 'inventory' && <Inventory />}
               {activePage === 'pos' && <POS />}
               {activePage === 'sales' && <Sales />}
               {activePage === 'outflow' && <Outflow />}
-              {activePage === 'investor-vault' && <InvestorVault />}
+              {activePage === 'profit-distribution' && <ProfitDistribution />}
             </PinGuard>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isConfigured } from '../lib/supabase';
 import { InventoryItem } from '../types';
 import { 
   Search, 
@@ -77,6 +77,7 @@ export default function Inventory() {
   }, [editingItem]);
 
   async function fetchData() {
+    if (!isConfigured) return;
     setLoading(true);
     setError(null);
     try {
@@ -87,9 +88,13 @@ export default function Inventory() {
 
       if (fetchError) throw fetchError;
       setItems(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching inventory:', err);
-      setError((err as any)?.message || 'Failed to fetch inventory data from Supabase.');
+      if (err.message === 'Failed to fetch') {
+        setError('Database connection error. Please check your Supabase secrets and connectivity.');
+      } else {
+        setError(err.message || 'Failed to fetch inventory data from Supabase.');
+      }
     } finally {
       setLoading(false);
     }

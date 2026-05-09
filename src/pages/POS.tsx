@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isConfigured } from '../lib/supabase';
 import { InventoryItem } from '../types';
 import { 
   Search, 
@@ -117,6 +117,7 @@ export default function POS() {
 
   // Fetch all products for local fuzzy search
   const fetchProducts = useCallback(async () => {
+    if (!isConfigured) return;
     try {
       setIsLoadingProducts(true);
       const { data, error } = await supabase
@@ -127,8 +128,11 @@ export default function POS() {
       
       if (error) throw error;
       setAllProducts(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching products:', err);
+      if (err.message === 'Failed to fetch') {
+        alert('Database connection error. Using local cache if available.');
+      }
     } finally {
       setIsLoadingProducts(false);
     }
