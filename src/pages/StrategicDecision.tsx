@@ -350,8 +350,8 @@ export default function StrategicDecision() {
             )}
 
             {activeTab === 'inventory' && (
-              <div className="h-full overflow-y-auto space-y-4 custom-scrollbar-gold pr-4">
-                {productPerformance.slice(0, 8).map((p, i) => (
+              <div className="h-full overflow-y-auto overscroll-contain space-y-4 custom-scrollbar-gold pr-4">
+                {productPerformance.map((p, i) => (
                   <div key={i} className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center justify-between group hover:bg-white/10 transition-all">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-[#FFD700]">
@@ -372,8 +372,8 @@ export default function StrategicDecision() {
             )}
 
             {activeTab === 'simulator' && (
-              <div className="h-full space-y-8 py-4">
-                <div className="grid grid-cols-2 gap-8">
+              <div className="h-full overflow-y-auto overscroll-contain space-y-8 py-4 custom-scrollbar-gold pr-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                   <div className="space-y-4">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Expansion Capital Investment</label>
                     <div className="relative">
@@ -483,17 +483,17 @@ export default function StrategicDecision() {
           </div>
           
           {/* Audit History mini */}
-          <div className="vault-card p-6 rounded-[2rem] border border-white/5 bg-[#0d0d0d]">
-             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <div className="vault-card p-6 rounded-[2rem] border border-white/5 bg-[#0d0d0d] flex flex-col max-h-[400px]">
+             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 sticky top-0 bg-[#0d0d0d] z-10 pb-2">
                 <History size={14} />
                 Recent Strategy Events
              </h4>
-             <div className="space-y-3">
+             <div className="space-y-3 overflow-y-auto overscroll-contain flex-1 custom-scrollbar-gold pr-2">
                 {logs.length === 0 ? (
-                  <p className="text-[10px] text-slate-700 italic">No events recorded...</p>
+                  <p className="text-[10px] text-slate-700 italic text-center py-8">No events recorded...</p>
                 ) : (
-                  logs.slice(0, 3).map(log => (
-                    <div key={log.id} className="text-[10px]">
+                  logs.map(log => (
+                    <div key={log.id} className="text-[10px] p-2 hover:bg-white/5 rounded-lg transition-colors">
                        <p className="text-[#FFD700] font-black uppercase tracking-tighter">{log.action}</p>
                        <p className="text-slate-500 leading-tight">{log.details}</p>
                     </div>

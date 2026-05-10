@@ -75,7 +75,7 @@
     @apply block md:hidden space-y-4;
   }
   .desktop-table {
-    @apply hidden md:table;
+    @apply hidden md:block w-full;
   }
   .z-sidebar {
     z-index: 1000;

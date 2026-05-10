@@ -34,11 +34,26 @@ type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'strategic
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setIsSidebarOpen(true);
+      } else {
+        setIsSidebarOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     // Load theme from localStorage
@@ -199,14 +214,24 @@ export default function App() {
 
   return (
     <SafeRender>
-      <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden selection:bg-[#FFD700]/30">
-      {/* Sidebar */}
-      <aside 
-        className={cn(
-          "bg-[#050505] text-white transition-all duration-500 ease-in-out flex flex-col border-r border-white/5 relative z-sidebar",
-          isSidebarOpen ? "w-72" : "w-20"
+      <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden selection:bg-[#FFD700]/30 relative">
+        {/* Mobile Overlay */}
+        {isMobile && isSidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[950] animate-in fade-in duration-300"
+            onClick={() => setIsSidebarOpen(false)}
+          />
         )}
-      >
+
+        {/* Sidebar */}
+        <aside 
+          className={cn(
+            "bg-[#050505] text-white transition-all duration-500 ease-in-out flex flex-col border-r border-white/5 relative z-sidebar",
+            isMobile 
+              ? cn("fixed inset-y-0 left-0 z-[1000] w-72", !isSidebarOpen && "-translate-x-full")
+              : cn(isSidebarOpen ? "w-72" : "w-20")
+          )}
+        >
         <div className="p-8 flex items-center justify-between">
           <div className={cn("font-black text-2xl tracking-tighter text-[#FFD700] drop-shadow-[0_0_15px_rgba(255,215,0,0.4)] transition-all duration-500", !isSidebarOpen && "opacity-0 scale-50 pointer-events-none")}>
             RETAIL<span className="text-white">OS</span>
@@ -275,8 +300,16 @@ export default function App() {
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <header className="h-20 bg-[#0a0a0a] border-b border-white/5 flex items-center justify-between px-4 md:px-10 shrink-0 relative z-40">
           <div className="flex items-center gap-4">
-            <div className="h-8 w-1 bg-[#FFD700] rounded-full" />
-            <h1 className="text-xl md:text-2xl font-black text-white uppercase tracking-tighter">
+            {isMobile && (
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="p-2 hover:bg-white/5 rounded-xl transition-all text-slate-500 hover:text-[#FFD700]"
+              >
+                <Menu size={24} />
+              </button>
+            )}
+            <div className="h-8 w-1 bg-[#FFD700] rounded-full hidden sm:block" />
+            <h1 className="text-lg md:text-2xl font-black text-white uppercase tracking-tighter truncate max-w-[150px] sm:max-w-none">
               {activePage.replace('-', ' ')}
             </h1>
           </div>
@@ -292,12 +325,12 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-10 relative custom-scrollbar max-w-full mx-auto">
+        <div className="flex-1 overflow-y-auto p-4 lg:p-10 relative custom-scrollbar w-full">
           {/* Background Glows */}
-          <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[#FFD700]/5 blur-[150px] rounded-full pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
+          <div className="absolute top-0 right-0 w-full sm:w-[800px] h-[800px] bg-[#FFD700]/5 blur-[150px] rounded-full pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-full sm:w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
           
-          <div className="relative z-10 w-full">
+          <div className="relative z-10 w-full max-w-[1400px] mx-auto">
             <PinGuard protectedPages={['dashboard', 'outflow', 'sales', 'strategic-decision', 'profit-distribution']} activePage={activePage}>
               {activePage === 'dashboard' && <Dashboard />}
               {activePage === 'inventory' && <Inventory />}

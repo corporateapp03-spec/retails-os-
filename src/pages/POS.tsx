@@ -317,10 +317,10 @@ export default function POS() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-100px)] gap-4 overflow-hidden">
+    <div className="flex flex-col lg:flex-row min-h-0 lg:h-[calc(100vh-140px)] gap-6">
       {/* Syncing Indicator */}
       {(isSyncing || queuedSales.length > 0) && (
-        <div className="fixed bottom-24 right-8 z-50 flex items-center gap-3 bg-[#FFD700] text-[#0a0a0a] px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(255,215,0,0.4)]">
+        <div className="fixed bottom-4 right-4 sm:bottom-24 sm:right-8 z-50 flex items-center gap-3 bg-[#FFD700] text-[#0a0a0a] px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(255,215,0,0.4)]">
           {isSyncing ? <RefreshCw className="animate-spin" size={16} /> : <Cloud size={16} />}
           <span className="text-[10px] uppercase tracking-widest">
             {isSyncing ? 'Syncing...' : `${queuedSales.length} Offline`}
@@ -329,7 +329,7 @@ export default function POS() {
       )}
 
       {/* Left Pane: Search & Results (70%) */}
-      <div className="flex-1 md:flex-[0.7] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden">
+      <div className="flex-[0.7] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden min-h-[400px] lg:min-h-0">
         <div className="p-4 border-b border-white/10 bg-white/5 sticky top-0 z-20">
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#FFD700] transition-colors" size={20} />
@@ -352,7 +352,7 @@ export default function POS() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar-gold">
+        <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar-gold">
           {isLoadingProducts ? (
             <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-20">
               <RefreshCw className="animate-spin text-[#FFD700]" size={32} />
@@ -427,7 +427,7 @@ export default function POS() {
       </div>
 
       {/* Right Pane: Cart (30%) */}
-      <div className="flex-1 md:flex-[0.3] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden relative">
+      <div className="flex-[0.3] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden relative min-h-[500px] lg:min-h-0">
         <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center">
           <h2 className="text-sm font-black text-[#FFD700] uppercase tracking-widest flex items-center gap-2">
             <ShoppingCart size={16} />
@@ -438,7 +438,7 @@ export default function POS() {
           </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar-gold">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col gap-3 custom-scrollbar-gold">
           {cart.length > 0 ? (
             [...cart].reverse().map(c => (
               <div key={c.item.id} className="p-3 bg-white/5 rounded-2xl border border-white/5 animate-in slide-in-from-top-4">

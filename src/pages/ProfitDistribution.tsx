@@ -578,7 +578,7 @@ export default function ProfitDistribution() {
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4">
               {logs.length === 0 ? (
                 <div className="py-24 text-center opacity-20">
                   <PieChart size={40} className="mx-auto mb-4" />
