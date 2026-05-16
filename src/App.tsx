@@ -23,14 +23,15 @@ import Sales from './pages/Sales';
 import Outflow from './pages/Outflow';
 import ProfitDistribution from './pages/ProfitDistribution';
 import StrategicDecision from './pages/StrategicDecision';
+import Settings from './pages/Settings';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import PinGuard from './components/PinGuard';
 import ThemeSwitcher from './components/ThemeSwitcher';
 import { SafeRender } from './components/SafeRender';
-import { AlertTriangle, Key, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Key, ExternalLink, Settings as SettingsIcon } from 'lucide-react';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'strategic-decision' | 'profit-distribution';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'strategic-decision' | 'profit-distribution' | 'settings';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -210,6 +211,7 @@ export default function App() {
     { id: 'outflow', label: 'Outflow Guardian', icon: ShieldCheck },
     { id: 'strategic-decision', label: 'Strategic Hub', icon: Zap },
     { id: 'profit-distribution', label: 'Profit Distribution', icon: TrendingUp },
+    { id: 'settings', label: 'Security Settings', icon: SettingsIcon },
   ];
 
   return (
@@ -339,6 +341,7 @@ export default function App() {
               {activePage === 'outflow' && <Outflow />}
               {activePage === 'strategic-decision' && <StrategicDecision />}
               {activePage === 'profit-distribution' && <ProfitDistribution />}
+              {activePage === 'settings' && <Settings />}
             </PinGuard>
           </div>
         </div>

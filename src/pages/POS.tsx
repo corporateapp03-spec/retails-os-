@@ -167,23 +167,29 @@ export default function POS() {
   }, [isOnline, queuedSales]);
 
   async function syncQueuedSales() {
+    if (isSyncing) return;
     setIsSyncing(true);
-    const queue = [...queuedSales];
-    const failed: QueuedSale[] = [];
+    try {
+      const queue = [...queuedSales];
+      const failed: QueuedSale[] = [];
 
-    for (const sale of queue) {
-      try {
-        await processSale(sale.cart, sale.paymentMethod, sale.timestamp);
-      } catch (err) {
-        console.error('Failed to sync sale:', err);
-        failed.push(sale);
+      for (const sale of queue) {
+        try {
+          await processSale(sale.cart, sale.paymentMethod, sale.timestamp);
+        } catch (err) {
+          console.error('Failed to sync sale:', err);
+          failed.push(sale);
+        }
       }
-    }
 
-    setQueuedSales(failed);
-    localStorage.setItem('offline_sales_queue', JSON.stringify(failed));
-    setIsSyncing(false);
-    fetchProducts(); // Refresh stock after sync
+      setQueuedSales(failed);
+      localStorage.setItem('offline_sales_queue', JSON.stringify(failed));
+      fetchProducts(); // Refresh stock after sync
+    } catch (err) {
+      console.error('Error in sync cycle:', err);
+    } finally {
+      setIsSyncing(false);
+    }
   }
 
   const addToCart = useCallback((item: InventoryItem) => {
@@ -262,44 +268,51 @@ export default function POS() {
   }
 
   async function handleFinalizeSale() {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || isProcessing) return;
     setIsProcessing(true);
     
-    const now = new Date();
-    const timestamp = now.toISOString();
+    // Safety timeout to prevent permanent "stuck" state
+    const safetyTimeout = setTimeout(() => {
+      setIsProcessing(false);
+      console.warn('Transaction safety timeout triggered');
+    }, 15000);
+
     const currentCart = [...cart];
     const currentTotal = cartTotal;
     const currentMethod = paymentMethod;
-
-    setCart([]);
-    setLastTransaction({
-      items: currentCart,
-      total: currentTotal,
-      method: currentMethod,
-      date: timestamp
-    });
-    setShowReceipt(true);
-
-    if (!isOnline) {
-      const newQueuedSale: QueuedSale = {
-        id: crypto.randomUUID(),
-        cart: currentCart,
-        paymentMethod: currentMethod,
-        timestamp: timestamp,
-        total: currentTotal
-      };
-      const newQueue = [...queuedSales, newQueuedSale];
-      setQueuedSales(newQueue);
-      localStorage.setItem('offline_sales_queue', JSON.stringify(newQueue));
-      setIsProcessing(false);
-      return;
-    }
+    const now = new Date();
+    const timestamp = now.toISOString();
 
     try {
+      // Optimistically clear cart and show receipt
+      setCart([]);
+      setLastTransaction({
+        items: currentCart,
+        total: currentTotal,
+        method: currentMethod,
+        date: timestamp
+      });
+      setShowReceipt(true);
+
+      if (!isOnline) {
+        const newQueuedSale: QueuedSale = {
+          id: crypto.randomUUID(),
+          cart: currentCart,
+          paymentMethod: currentMethod,
+          timestamp: timestamp,
+          total: currentTotal
+        };
+        const newQueue = [...queuedSales, newQueuedSale];
+        setQueuedSales(newQueue);
+        localStorage.setItem('offline_sales_queue', JSON.stringify(newQueue));
+        return;
+      }
+
       await processSale(currentCart, currentMethod, timestamp);
-      fetchProducts(); // Refresh local cache
+      await fetchProducts(); // Refresh local cache
     } catch (err) {
-      console.error('Online transaction failed, queuing instead:', err);
+      console.error('Transaction failed, queuing instead:', err);
+      // Since we already showed "confirmed" (optimistic), we MUST queue it to ensure no data loss
       const newQueuedSale: QueuedSale = {
         id: crypto.randomUUID(),
         cart: currentCart,
@@ -311,16 +324,17 @@ export default function POS() {
       setQueuedSales(newQueue);
       localStorage.setItem('offline_sales_queue', JSON.stringify(newQueue));
     } finally {
+      clearTimeout(safetyTimeout);
       setIsProcessing(false);
-      searchInputRef.current?.focus();
+      setTimeout(() => searchInputRef.current?.focus(), 100);
     }
   }
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-0 lg:h-[calc(100vh-140px)] gap-6">
+    <div className="flex flex-col lg:flex-row min-h-0 lg:h-[calc(100vh-140px)] gap-4 lg:gap-6 lg:overflow-hidden">
       {/* Syncing Indicator */}
       {(isSyncing || queuedSales.length > 0) && (
-        <div className="fixed bottom-4 right-4 sm:bottom-24 sm:right-8 z-50 flex items-center gap-3 bg-[#FFD700] text-[#0a0a0a] px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(255,215,0,0.4)]">
+        <div className="fixed bottom-24 right-4 sm:right-8 z-50 flex items-center gap-3 bg-[#FFD700] text-[#0a0a0a] px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(255,215,0,0.4)]">
           {isSyncing ? <RefreshCw className="animate-spin" size={16} /> : <Cloud size={16} />}
           <span className="text-[10px] uppercase tracking-widest">
             {isSyncing ? 'Syncing...' : `${queuedSales.length} Offline`}
@@ -329,7 +343,7 @@ export default function POS() {
       )}
 
       {/* Left Pane: Search & Results (70%) */}
-      <div className="flex-[0.7] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden min-h-[400px] lg:min-h-0">
+      <div className="flex-none lg:flex-[0.7] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden min-h-[400px] lg:min-h-0">
         <div className="p-4 border-b border-white/10 bg-white/5 sticky top-0 z-20">
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#FFD700] transition-colors" size={20} />
@@ -352,7 +366,7 @@ export default function POS() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar-gold">
+        <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar-gold min-h-0">
           {isLoadingProducts ? (
             <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-20">
               <RefreshCw className="animate-spin text-[#FFD700]" size={32} />
@@ -427,18 +441,26 @@ export default function POS() {
       </div>
 
       {/* Right Pane: Cart (30%) */}
-      <div className="flex-[0.3] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden relative min-h-[500px] lg:min-h-0">
-        <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center">
+      <div className="flex-none lg:flex-[0.3] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden relative min-h-[500px] lg:min-h-0">
+        <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center shrink-0">
           <h2 className="text-sm font-black text-[#FFD700] uppercase tracking-widest flex items-center gap-2">
             <ShoppingCart size={16} />
             Active Cart
           </h2>
-          <span className="text-[10px] font-black bg-white/10 px-2 py-1 rounded text-slate-400">
-            {cart.length} Items
-          </span>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setCart([])}
+              className="text-[10px] font-black text-rose-500 uppercase hover:bg-rose-500/10 px-2 py-1 rounded transition-colors"
+            >
+              Clear
+            </button>
+            <span className="text-[10px] font-black bg-white/10 px-2 py-1 rounded text-slate-400">
+              {cart.length} Items
+            </span>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col gap-3 custom-scrollbar-gold">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col gap-3 custom-scrollbar-gold min-h-0">
           {cart.length > 0 ? (
             [...cart].reverse().map(c => (
               <div key={c.item.id} className="p-3 bg-white/5 rounded-2xl border border-white/5 animate-in slide-in-from-top-4">
@@ -485,7 +507,7 @@ export default function POS() {
         </div>
 
         {/* Sticky Footer */}
-        <div className="p-4 bg-[#0a0a0a] border-t border-white/10 space-y-4">
+        <div className="p-4 bg-[#0a0a0a] border-t border-white/10 space-y-4 shrink-0">
           <div className="space-y-2">
             <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest">
               <span>Total Value</span>
@@ -513,17 +535,17 @@ export default function POS() {
             disabled={cart.length === 0 || isProcessing}
             onClick={handleFinalizeSale}
             className={cn(
-              "w-full py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all text-base uppercase tracking-widest",
+              "w-full py-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all text-base uppercase tracking-widest",
               cart.length === 0 || isProcessing
                 ? "bg-white/5 text-slate-700 cursor-not-allowed"
-                : "bg-[#FFD700] text-[#0a0a0a] hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_30px_rgba(255,215,0,0.2)]"
+                : "bg-[#FFD700] text-[#0a0a0a] hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_30px_rgba(255,215,0,0.3)]"
             )}
           >
             {isProcessing ? (
-              <RefreshCw className="animate-spin" size={20} />
+              <RefreshCw className="animate-spin" size={24} />
             ) : (
               <>
-                <CreditCard size={20} />
+                <CheckCircle2 size={24} />
                 Execute Sale
               </>
             )}

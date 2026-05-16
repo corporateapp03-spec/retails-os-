@@ -15,7 +15,19 @@ export default function PinGuard({ children, protectedPages, activePage }: PinGu
   const [error, setError] = useState(false);
 
   // The Golden PIN from env or default
-  const MASTER_PIN = import.meta.env.VITE_MANAGER_PIN || '7007';
+  const [masterPin, setMasterPin] = useState(() => {
+    return localStorage.getItem('retailos_manager_pin') || import.meta.env.VITE_MANAGER_PIN || '7007';
+  });
+
+  useEffect(() => {
+    // Sync PIN if it changes in localStorage from settings
+    const handleStorage = () => {
+      const saved = localStorage.getItem('retailos_manager_pin');
+      if (saved) setMasterPin(saved);
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   useEffect(() => {
     // Volatile Security: Reset unlock status on every page change
@@ -38,7 +50,7 @@ export default function PinGuard({ children, protectedPages, activePage }: PinGu
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (pin === MASTER_PIN) {
+    if (pin === masterPin) {
       setIsUnlocked(true);
       setPin('');
     } else {
