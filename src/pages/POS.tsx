@@ -242,17 +242,11 @@ export default function POS() {
       created_at: timestamp
     }));
 
-    let { error: ledgerError } = await supabase.from('ledger').insert(entries);
-
-    if (ledgerError && (ledgerError.message.includes('inventory_item_id') || ledgerError.code === 'PGRST204')) {
-      const fallbackEntries = entries.map(({ inventory_item_id, ...rest }) => rest);
-      const { error: retryError } = await supabase.from('ledger').insert(fallbackEntries);
-      ledgerError = retryError;
-    }
-
+    const { error: ledgerError } = await supabase.from('ledger').insert(entries);
     if (ledgerError) throw ledgerError;
 
-    for (const cartItem of saleCart) {
+    // Parallelize inventory updates for high-speed performance
+    await Promise.all(saleCart.map(async (cartItem) => {
       const { data: latest } = await supabase
         .from('inventory')
         .select('quantity')
@@ -260,11 +254,11 @@ export default function POS() {
         .single();
       
       const currentStock = latest?.quantity || 0;
-      await supabase
+      return supabase
         .from('inventory')
         .update({ quantity: currentStock - cartItem.quantity })
         .eq('id', cartItem.item.id);
-    }
+    }));
   }
 
   async function handleFinalizeSale() {
@@ -331,26 +325,27 @@ export default function POS() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-0 lg:h-[calc(100vh-140px)] gap-4 lg:gap-6 lg:overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-[calc(100dvh-120px)] lg:h-[calc(100vh-140px)] gap-4 lg:gap-6 overflow-hidden">
       {/* Syncing Indicator */}
       {(isSyncing || queuedSales.length > 0) && (
-        <div className="fixed bottom-24 right-4 sm:right-8 z-50 flex items-center gap-3 bg-[#FFD700] text-[#0a0a0a] px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(255,215,0,0.4)]">
+        <div className="fixed bottom-24 right-4 sm:right-8 z-50 flex items-center gap-3 bg-[#FFD700] text-[#0a0a0a] px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(255,215,0,0.4)] transition-all animate-in slide-in-from-right-4">
           {isSyncing ? <RefreshCw className="animate-spin" size={16} /> : <Cloud size={16} />}
-          <span className="text-[10px] uppercase tracking-widest">
-            {isSyncing ? 'Syncing...' : `${queuedSales.length} Offline`}
+          <span className="text-[10px] uppercase tracking-widest hidden sm:inline">
+            {isSyncing ? 'Syncing Vault...' : `${queuedSales.length} Transactions Pending`}
           </span>
+          {!isOnline && <WifiOff size={14} className="text-rose-600 animate-pulse" />}
         </div>
       )}
 
       {/* Left Pane: Search & Results (70%) */}
-      <div className="flex-none lg:flex-[0.7] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden min-h-[400px] lg:min-h-0">
+      <div className="flex-1 lg:flex-[0.7] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden min-h-0">
         <div className="p-4 border-b border-white/10 bg-white/5 sticky top-0 z-20">
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#FFD700] transition-colors" size={20} />
             <input 
               ref={searchInputRef}
               type="text" 
-              placeholder="Search by product name or SKU..." 
+              placeholder="Search by name or code..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-12 pr-4 py-4 bg-[#0a0a0a] border-2 border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none transition-all text-lg font-bold placeholder:text-slate-700 text-white"
@@ -366,7 +361,7 @@ export default function POS() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar-gold min-h-0">
+        <div className="flex-1 overflow-y-auto custom-scrollbar-gold min-h-0">
           {isLoadingProducts ? (
             <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-20">
               <RefreshCw className="animate-spin text-[#FFD700]" size={32} />
@@ -441,26 +436,26 @@ export default function POS() {
       </div>
 
       {/* Right Pane: Cart (30%) */}
-      <div className="flex-none lg:flex-[0.3] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden relative min-h-[500px] lg:min-h-0">
+      <div className="flex-1 lg:flex-[0.3] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden relative min-h-0">
         <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center shrink-0">
-          <h2 className="text-sm font-black text-[#FFD700] uppercase tracking-widest flex items-center gap-2">
+          <h2 className="text-xs font-black text-[#FFD700] uppercase tracking-widest flex items-center gap-2">
             <ShoppingCart size={16} />
-            Active Cart
+            Cart Total
           </h2>
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setCart([])}
               className="text-[10px] font-black text-rose-500 uppercase hover:bg-rose-500/10 px-2 py-1 rounded transition-colors"
             >
-              Clear
+              Flush
             </button>
             <span className="text-[10px] font-black bg-white/10 px-2 py-1 rounded text-slate-400">
-              {cart.length} Items
+              {cart.length} SKU
             </span>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col gap-3 custom-scrollbar-gold min-h-0">
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar-gold min-h-0">
           {cart.length > 0 ? (
             [...cart].reverse().map(c => (
               <div key={c.item.id} className="p-3 bg-white/5 rounded-2xl border border-white/5 animate-in slide-in-from-top-4">
