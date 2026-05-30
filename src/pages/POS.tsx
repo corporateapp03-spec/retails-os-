@@ -123,11 +123,12 @@ export default function POS() {
       const { data, error } = await supabase
         .from('inventory')
         .select('*')
-        .eq('active', true)
         .order('name');
       
       if (error) throw error;
-      setAllProducts(data || []);
+      // Client-side filtering: keep items unless they are explicitly set to inactive (active === false)
+      const activeProducts = (data || []).filter(p => p.active !== false);
+      setAllProducts(activeProducts);
     } catch (err: any) {
       console.error('Error fetching products:', err);
       if (err.message === 'Failed to fetch') {
@@ -150,13 +151,16 @@ export default function POS() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // High-performance local fuzzy search
+  // High-performance local fuzzy search (falls back to listing on empty query)
   const filteredProducts = useMemo(() => {
-    if (!debouncedQuery) return [];
+    const trimmedQuery = debouncedQuery.trim();
+    if (!trimmedQuery) {
+      return allProducts.slice(0, 100); // Show up to 100 products by default on load for fast browsing
+    }
     return allProducts.filter(p => 
-      p.name.toLowerCase().includes(debouncedQuery) || 
-      (p.code && p.code.toLowerCase().includes(debouncedQuery))
-    ).slice(0, 50); // Limit results for UI performance
+      (p.name || '').toLowerCase().includes(trimmedQuery) || 
+      (p.code && p.code.toLowerCase().includes(trimmedQuery))
+    ).slice(0, 50); // Limit filtered results for UI performance
   }, [debouncedQuery, allProducts]);
 
   // Background Sync Logic
