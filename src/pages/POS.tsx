@@ -93,6 +93,7 @@ export default function POS() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const isSyncingRef = useRef(false);
 
   // Focus search on load
   useEffect(() => {
@@ -117,22 +118,46 @@ export default function POS() {
 
   // Fetch all products for local fuzzy search
   const fetchProducts = useCallback(async () => {
-    if (!isConfigured) return;
+    setIsLoadingProducts(true);
+    let loadedFromCache = false;
+
+    // Load from local cache instantly for fallback/network issues
     try {
-      setIsLoadingProducts(true);
+      const cached = localStorage.getItem('retailos_inventory_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAllProducts(parsed);
+          loadedFromCache = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse inventory cache', e);
+    }
+
+    if (!isConfigured) {
+      setIsLoadingProducts(false);
+      return;
+    }
+
+    try {
       const { data, error } = await supabase
         .from('inventory')
         .select('*')
         .order('name');
       
       if (error) throw error;
-      // Client-side filtering: keep items unless they are explicitly set to inactive (active === false)
-      const activeProducts = (data || []).filter(p => p.active !== false);
+      
+      // Client-side filtering: keep items unless they are explicitly set to inactive
+      const activeProducts = (data || []).filter(p => p.active !== false && p.active !== 'false');
       setAllProducts(activeProducts);
+      
+      // Save to cache for offline resilience
+      localStorage.setItem('retailos_inventory_cache', JSON.stringify(activeProducts));
     } catch (err: any) {
       console.error('Error fetching products:', err);
-      if (err.message === 'Failed to fetch') {
-        alert('Database connection error. Using local cache if available.');
+      if (!loadedFromCache) {
+        console.warn('Database offline or unreachable. No local cache is present.');
       }
     } finally {
       setIsLoadingProducts(false);
@@ -151,27 +176,38 @@ export default function POS() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // High-performance local fuzzy search (falls back to listing on empty query)
+  // High-performance intelligent multi-term search
   const filteredProducts = useMemo(() => {
     const trimmedQuery = debouncedQuery.trim();
     if (!trimmedQuery) {
-      return allProducts.slice(0, 100); // Show up to 100 products by default on load for fast browsing
+      return allProducts.slice(0, 100); // Show top 100 products for super fast responsive scroll
     }
-    return allProducts.filter(p => 
-      (p.name || '').toLowerCase().includes(trimmedQuery) || 
-      (p.code && p.code.toLowerCase().includes(trimmedQuery))
-    ).slice(0, 50); // Limit filtered results for UI performance
+    const terms = trimmedQuery.split(/\s+/).filter(Boolean);
+    return allProducts.filter(p => {
+      const name = (p.name || '').toLowerCase();
+      const code = (p.code || '').toLowerCase();
+      const catIdName = p.category_id ? (CATEGORY_MAP[p.category_id] || '').toLowerCase() : '';
+      const catName = (p.category || '').toLowerCase();
+
+      return terms.every(term => 
+        name.includes(term) || 
+        code.includes(term) || 
+        catIdName.includes(term) || 
+        catName.includes(term)
+      );
+    }).slice(0, 80); // Limit filtered results for flawless rendering speed
   }, [debouncedQuery, allProducts]);
 
   // Background Sync Logic
   useEffect(() => {
-    if (isOnline && queuedSales.length > 0 && !isSyncing) {
+    if (isOnline && queuedSales.length > 0 && !isSyncing && !isSyncingRef.current) {
       syncQueuedSales();
     }
   }, [isOnline, queuedSales]);
 
   async function syncQueuedSales() {
-    if (isSyncing) return;
+    if (isSyncing || isSyncingRef.current) return;
+    isSyncingRef.current = true;
     setIsSyncing(true);
     try {
       const queue = [...queuedSales];
@@ -192,6 +228,7 @@ export default function POS() {
     } catch (err) {
       console.error('Error in sync cycle:', err);
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
     }
   }
@@ -329,7 +366,7 @@ export default function POS() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100dvh-120px)] lg:h-[calc(100vh-140px)] gap-4 lg:gap-6 overflow-hidden">
+    <div className="flex flex-col lg:flex-row min-h-0 lg:h-[calc(100vh-175px)] gap-4 lg:gap-6 overflow-visible lg:overflow-hidden">
       {/* Syncing Indicator */}
       {(isSyncing || queuedSales.length > 0) && (
         <div className="fixed bottom-24 right-4 sm:right-8 z-50 flex items-center gap-3 bg-[#FFD700] text-[#0a0a0a] px-4 py-2 rounded-full font-black shadow-[0_0_20px_rgba(255,215,0,0.4)] transition-all animate-in slide-in-from-right-4">
@@ -342,7 +379,7 @@ export default function POS() {
       )}
 
       {/* Left Pane: Search & Results (70%) */}
-      <div className="flex-1 lg:flex-[0.7] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden min-h-0">
+      <div className="flex-none lg:flex-[0.7] h-[550px] lg:h-full flex flex-col bg-[#0d0d0d]/80 rounded-3xl border border-white/5 scale-100 shadow-2xl overflow-hidden relative min-h-0">
         <div className="p-4 border-b border-white/10 bg-white/5 sticky top-0 z-20">
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#FFD700] transition-colors" size={20} />
@@ -365,7 +402,7 @@ export default function POS() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar-gold min-h-0">
+        <div className="flex-1 overflow-y-auto overscroll-y-contain custom-scrollbar-gold min-h-0">
           {isLoadingProducts ? (
             <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-20">
               <RefreshCw className="animate-spin text-[#FFD700]" size={32} />
@@ -395,7 +432,7 @@ export default function POS() {
                         )}
                       >
                         <td className="px-4 py-3">
-                          <p className="font-black text-white text-sm group-hover:gold-text">{item.name}</p>
+                           <p className="font-black text-white text-sm group-hover:gold-text">{item.name}</p>
                           <p className="text-[10px] text-slate-500 uppercase">{CATEGORY_MAP[item.category_id] || item.category}</p>
                         </td>
                         <td className="px-4 py-3 font-mono text-[10px] text-slate-400">{item.code}</td>
@@ -440,7 +477,7 @@ export default function POS() {
       </div>
 
       {/* Right Pane: Cart (30%) */}
-      <div className="flex-1 lg:flex-[0.3] flex flex-col bg-white/5 rounded-3xl border border-white/10 overflow-hidden relative min-h-0">
+      <div className="flex-none lg:flex-[0.3] h-[650px] lg:h-full flex flex-col bg-[#0d0d0d]/80 rounded-3xl border border-white/5 shadow-2xl overflow-hidden relative min-h-0">
         <div className="p-4 border-b border-white/10 bg-white/5 flex justify-between items-center shrink-0">
           <h2 className="text-xs font-black text-[#FFD700] uppercase tracking-widest flex items-center gap-2">
             <ShoppingCart size={16} />
@@ -459,7 +496,7 @@ export default function POS() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar-gold min-h-0">
+        <div className="flex-1 overflow-y-auto overscroll-y-contain p-4 flex flex-col gap-3 custom-scrollbar-gold min-h-0">
           {cart.length > 0 ? (
             [...cart].reverse().map(c => (
               <div key={c.item.id} className="p-3 bg-white/5 rounded-2xl border border-white/5 animate-in slide-in-from-top-4">
