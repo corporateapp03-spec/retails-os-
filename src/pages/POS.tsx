@@ -13,7 +13,8 @@ import {
   RefreshCw, 
   Minus, 
   Plus, 
-  X 
+  X,
+  AlertCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -39,6 +40,7 @@ interface QueuedSale {
 // Memoized Product Item Component for performance
 const ProductItem = React.memo(({ item, onAdd }: { item: InventoryItem, onAdd: (item: InventoryItem) => void }) => {
   const isOutOfStock = item.quantity <= 0;
+  const isInactive = item.active === false || String(item.active).toLowerCase() === 'false';
   
   return (
     <button
@@ -57,7 +59,14 @@ const ProductItem = React.memo(({ item, onAdd }: { item: InventoryItem, onAdd: (
           <Package size={24} />
         </div>
         <div>
-          <p className="font-black text-white text-sm md:text-base">{item.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-black text-white text-sm md:text-base">{item.name}</p>
+            {isInactive && (
+              <span className="px-2 py-0.5 bg-rose-500/10 text-rose-500 rounded text-[8px] font-black uppercase tracking-widest leading-none border border-rose-500/20">
+                Inactive
+              </span>
+            )}
+          </div>
           <p className="text-[10px] md:text-xs text-slate-500 font-medium uppercase tracking-widest">
             {item.code} • {CATEGORY_MAP[item.category_id] || item.category}
           </p>
@@ -80,7 +89,6 @@ const ProductItem = React.memo(({ item, onAdd }: { item: InventoryItem, onAdd: (
 
 export default function POS() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [allProducts, setAllProducts] = useState<InventoryItem[]>([]);
   const [cart, setCart] = useState<{item: InventoryItem, quantity: number}[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -91,6 +99,7 @@ export default function POS() {
   const [showReceipt, setShowReceipt] = useState(false);
   const [lastTransaction, setLastTransaction] = useState<any>(null);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isSyncingRef = useRef(false);
@@ -119,6 +128,7 @@ export default function POS() {
   // Fetch all products for local fuzzy search
   const fetchProducts = useCallback(async () => {
     setIsLoadingProducts(true);
+    setFetchError(null);
     let loadedFromCache = false;
 
     // Load from local cache instantly for fallback/network issues
@@ -148,14 +158,15 @@ export default function POS() {
       
       if (error) throw error;
       
-      // Client-side filtering: keep items unless they are explicitly set to inactive
-      const activeProducts = (data || []).filter(p => p.active !== false && p.active !== 'false');
-      setAllProducts(activeProducts);
+      // Retain all products to avoid user losing searchability; handle active status visually
+      const products = data || [];
+      setAllProducts(products);
       
       // Save to cache for offline resilience
-      localStorage.setItem('retailos_inventory_cache', JSON.stringify(activeProducts));
+      localStorage.setItem('retailos_inventory_cache', JSON.stringify(products));
     } catch (err: any) {
       console.error('Error fetching products:', err);
+      setFetchError(err.message || 'Database connection offline.');
       if (!loadedFromCache) {
         console.warn('Database offline or unreachable. No local cache is present.');
       }
@@ -168,35 +179,49 @@ export default function POS() {
     fetchProducts();
   }, [fetchProducts]);
 
-  // Debounce search query
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery.toLowerCase());
-    }, 150); // 150ms high-speed debounce
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // High-performance intelligent multi-term search
+  // High-performance intelligent instant multi-term & continuous search (no lag/debounce!)
   const filteredProducts = useMemo(() => {
-    const trimmedQuery = debouncedQuery.trim();
-    if (!trimmedQuery) {
-      return allProducts.slice(0, 100); // Show top 100 products for super fast responsive scroll
-    }
-    const terms = trimmedQuery.split(/\s+/).filter(Boolean);
-    return allProducts.filter(p => {
-      const name = (p.name || '').toLowerCase();
-      const code = (p.code || '').toLowerCase();
-      const catIdName = p.category_id ? (CATEGORY_MAP[p.category_id] || '').toLowerCase() : '';
-      const catName = (p.category || '').toLowerCase();
+    try {
+      const trimmedQuery = searchQuery.trim().toLowerCase();
+      if (!trimmedQuery) {
+        return allProducts.slice(0, 100); // Show top 100 products for super fast responsive scroll
+      }
+      const terms = trimmedQuery.split(/\s+/).filter(Boolean);
+      
+      return allProducts.filter(p => {
+        if (!p) return false;
+        const name = String(p.name || '').toLowerCase();
+        const code = String(p.code || '').toLowerCase();
+        const categoryIdStr = String(p.category_id || '');
+        const catIdName = p.category_id ? String(CATEGORY_MAP[p.category_id] || '').toLowerCase() : '';
+        const catName = String(p.category || '').toLowerCase();
 
-      return terms.every(term => 
-        name.includes(term) || 
-        code.includes(term) || 
-        catIdName.includes(term) || 
-        catName.includes(term)
-      );
-    }).slice(0, 80); // Limit filtered results for flawless rendering speed
-  }, [debouncedQuery, allProducts]);
+        // 1. Multi-term search (each term matches at least one field)
+        const matchesTerms = terms.every(term => 
+          name.includes(term) || 
+          code.includes(term) || 
+          catIdName.includes(term) || 
+          catName.includes(term) ||
+          categoryIdStr.includes(term)
+        );
+        if (matchesTerms) return true;
+
+        // 2. Continuous substring search fallback
+        const fullString = `${name} ${code} ${catIdName} ${catName}`;
+        if (fullString.includes(trimmedQuery)) return true;
+
+        // 3. Normalized slug/code matching fallback (e.g. searching "SP001" matches "SP-001")
+        const strippedCode = code.replace(/[^a-zA-Z0-9]/g, '');
+        const strippedQuery = trimmedQuery.replace(/[^a-zA-Z0-9]/g, '');
+        if (strippedQuery && strippedCode.includes(strippedQuery)) return true;
+
+        return false;
+      }).slice(0, 80); // Limit filtered results for flawless rendering speed
+    } catch (e) {
+      console.error('Error in instant search:', e);
+      return allProducts.slice(0, 50);
+    }
+  }, [searchQuery, allProducts]);
 
   // Background Sync Logic
   useEffect(() => {
@@ -402,6 +427,21 @@ export default function POS() {
           </div>
         </div>
 
+        {fetchError && (
+          <div className="mx-4 mt-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center justify-between gap-2 shrink-0 animate-in slide-in-from-top-2">
+            <div className="flex items-center gap-2 text-rose-500 text-xs font-black uppercase">
+              <AlertCircle size={14} className="shrink-0" />
+              <span className="truncate">Database Error: {fetchError}</span>
+            </div>
+            <button 
+              onClick={() => fetchProducts()} 
+              className="px-2 py-1 bg-white/5 hover:bg-white/10 text-white rounded text-[9px] uppercase font-black tracking-widest shrink-0 transition-colors"
+            >
+              Retry Sync
+            </button>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto overscroll-y-contain custom-scrollbar-gold min-h-0">
           {isLoadingProducts ? (
             <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-20">
@@ -432,7 +472,14 @@ export default function POS() {
                         )}
                       >
                         <td className="px-4 py-3">
-                           <p className="font-black text-white text-sm group-hover:gold-text">{item.name}</p>
+                           <div className="flex items-center gap-2">
+                             <p className="font-black text-white text-sm group-hover:gold-text">{item.name}</p>
+                             {(item.active === false || String(item.active).toLowerCase() === 'false') && (
+                               <span className="px-2 py-0.5 bg-rose-500/10 text-rose-500 rounded text-[8px] font-black uppercase tracking-widest leading-none border border-rose-500/20">
+                                 Inactive
+                               </span>
+                             )}
+                           </div>
                           <p className="text-[10px] text-slate-500 uppercase">{CATEGORY_MAP[item.category_id] || item.category}</p>
                         </td>
                         <td className="px-4 py-3 font-mono text-[10px] text-slate-400">{item.code}</td>
