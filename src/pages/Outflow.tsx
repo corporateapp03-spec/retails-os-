@@ -200,8 +200,51 @@ export default function Outflow() {
 
   if (loading && summaries.length === 0) return <Loading />;
 
+  const totalExpenses = outflows
+    .filter(item => item.transaction_type === 'expense')
+    .reduce((sum, item) => sum + (item.amount || 0), 0);
+
+  const totalCapitalWithdrawals = outflows
+    .filter(item => ['capital_withdrawal', 'CAPITAL_WITHDRAWAL'].includes(item.transaction_type || ''))
+    .reduce((sum, item) => sum + (item.amount || 0), 0);
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
+      {/* Financial Metrics Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="vault-card p-6 relative overflow-hidden group hover:gold-glow transition-all duration-300">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <TrendingDown size={64} className="text-[#FFD700]" />
+          </div>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-[#FFD700]/10 rounded-xl text-[#FFD700]">
+              <TrendingDown size={18} />
+            </div>
+            <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Total Expenses</h3>
+          </div>
+          <p className="text-3xl font-black text-white group-hover:gold-text transition-colors">
+            ${totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest font-black">Accumulated operational outflows</p>
+        </div>
+
+        <div className="vault-card p-6 relative overflow-hidden group hover:gold-glow transition-all duration-300">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <DollarSign size={64} className="text-rose-500" />
+          </div>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-rose-500/10 rounded-xl text-rose-500">
+              <DollarSign size={18} />
+            </div>
+            <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Total Capital Withdrawal</h3>
+          </div>
+          <p className="text-3xl font-black text-rose-500">
+            ${totalCapitalWithdrawals.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest font-black">Total decapitalizations from cash preserves</p>
+        </div>
+      </div>
+
       {/* Health Monitor Header */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {summaries.map((summary) => (
@@ -233,19 +276,19 @@ export default function Outflow() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="space-y-8">
         {/* Entry Form */}
-        <div className="lg:col-span-4">
-          <div className="vault-card overflow-hidden sticky top-8">
-            <div className="p-6 bg-[#050505] border-b border-white/5">
-              <h2 className="text-lg font-black flex items-center gap-2 text-white uppercase tracking-tighter">
-                <ArrowDownCircle size={20} className="text-[#FFD700]" />
-                Record Outflow
-              </h2>
-              <p className="text-[10px] text-slate-500 mt-1 uppercase font-black tracking-widest">Mission-Critical Financial Entry</p>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-8 space-y-6">
+        <div className="vault-card overflow-hidden">
+          <div className="p-6 bg-[#050505] border-b border-white/5">
+            <h2 className="text-lg font-black flex items-center gap-2 text-white uppercase tracking-tighter">
+              <ArrowDownCircle size={20} className="text-[#FFD700]" />
+              Record Outflow
+            </h2>
+            <p className="text-[10px] text-slate-500 mt-1 uppercase font-black tracking-widest">Mission-Critical Financial Entry</p>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="p-8 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Category</label>
                 <select 
@@ -284,60 +327,60 @@ export default function Outflow() {
                   </button>
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Amount ($)</label>
-                <input 
-                  type="number"
-                  step="0.01"
-                  value={amount || ''}
-                  onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-                  placeholder="0.00"
-                  className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-2xl font-black text-white placeholder:text-slate-800"
-                />
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Amount ($)</label>
+              <input 
+                type="number"
+                step="0.01"
+                value={amount || ''}
+                onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                placeholder="0.00"
+                className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-2xl font-black text-white placeholder:text-slate-800"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Description / Reason</label>
+              <textarea 
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Monthly Rent, Generator Fuel, Capital Withdrawal for Expansion..."
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-sm min-h-[100px] resize-none text-white placeholder:text-slate-800"
+              />
+            </div>
+
+            {error && (
+              <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3">
+                <AlertCircle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-rose-400 font-black leading-relaxed uppercase tracking-tighter">{error}</p>
               </div>
+            )}
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Description / Reason</label>
-                <textarea 
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g. Monthly Rent, Generator Fuel, Capital Withdrawal for Expansion..."
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-sm min-h-[100px] resize-none text-white placeholder:text-slate-800"
-                />
-              </div>
-
-              {error && (
-                <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3">
-                  <AlertCircle size={18} className="text-rose-500 shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-rose-400 font-black leading-relaxed uppercase tracking-tighter">{error}</p>
-                </div>
+            <button
+              disabled={isSubmitting}
+              className={cn(
+                "w-full py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all uppercase tracking-widest",
+                isDecapitation 
+                  ? "bg-rose-500 text-white hover:bg-rose-600 shadow-[0_0_20px_rgba(244,63,94,0.2)]" 
+                  : "bg-[#FFD700] text-[#0a0a0a] hover:bg-[#FFD700]/90 shadow-[0_0_20px_rgba(255,215,0,0.2)]"
               )}
-
-              <button
-                disabled={isSubmitting}
-                className={cn(
-                  "w-full py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all uppercase tracking-widest",
-                  isDecapitation 
-                    ? "bg-rose-500 text-white hover:bg-rose-600 shadow-[0_0_20px_rgba(244,63,94,0.2)]" 
-                    : "bg-[#FFD700] text-[#0a0a0a] hover:bg-[#FFD700]/90 shadow-[0_0_20px_rgba(255,215,0,0.2)]"
-                )}
-              >
-                {isSubmitting ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current" />
-                ) : (
-                  <>
-                    <ShieldCheck size={18} />
-                    Commit Transaction
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
+            >
+              {isSubmitting ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current" />
+              ) : (
+                <>
+                  <ShieldCheck size={18} />
+                  Commit Transaction
+                </>
+              )}
+            </button>
+          </form>
         </div>
 
         {/* Outflow Archive */}
-        <div className="lg:col-span-8 space-y-6">
+        <div className="space-y-6">
           <div className="vault-card overflow-hidden">
             <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
               <h2 className="text-lg font-black flex items-center gap-2 text-white uppercase tracking-tighter">
