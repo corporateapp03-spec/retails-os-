@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase, isConfigured } from '../lib/supabase';
 import { Category, BusinessSummary, LedgerEntry } from '../types';
 import { 
@@ -12,10 +12,18 @@ import {
   X,
   TrendingDown,
   ShieldCheck,
-  DollarSign
+  DollarSign,
+  Calendar,
+  Download,
+  Loader2,
+  ArrowUpRight,
+  ArrowDownLeft,
+  FileText
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Loading from '../components/Loading';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function Outflow() {
   const [summaries, setSummaries] = useState<BusinessSummary[]>([]);
@@ -29,6 +37,21 @@ export default function Outflow() {
   const [amount, setAmount] = useState<number>(0);
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [allLedger, setAllLedger] = useState<LedgerEntry[]>([]);
+  const [reportPeriod, setReportPeriod] = useState<'daily' | 'monthly' | 'semi-annual' | 'annual'>('daily');
+  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [selectedSemiYear, setSelectedSemiYear] = useState<number>(() => new Date().getFullYear());
+  const [selectedHalf, setSelectedHalf] = useState<'H1' | 'H2'>(() => {
+    const month = new Date().getMonth();
+    return month < 6 ? 'H1' : 'H2';
+  });
+  const [selectedAnnualYear, setSelectedAnnualYear] = useState<number>(() => new Date().getFullYear());
+  const [downloadingReport, setDownloadingReport] = useState<boolean>(false);
 
   // Edit/Reverse state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -55,6 +78,12 @@ export default function Outflow() {
       const rawSummaries = summaryRes.data || [];
       const rawLedger = ledgerRes.data || [];
       const rawInventory = inventoryRes.data || [];
+
+      const enrichedLedger = rawLedger.map(l => ({
+        ...l,
+        inventory: rawInventory.find(i => i.id === l.inventory_item_id)
+      }));
+      setAllLedger(enrichedLedger);
 
       setOutflows(rawLedger.filter(l => ['expense', 'capital_withdrawal', 'CAPITAL_WITHDRAWAL'].includes(l.transaction_type || '')));
 
@@ -198,6 +227,231 @@ export default function Outflow() {
     }
   }
 
+  const safeNum = (val: any) => {
+    const n = parseFloat(String(val || 0));
+    return isNaN(n) ? 0 : n;
+  };
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([new Date().getFullYear()]);
+    allLedger.forEach(entry => {
+      if (entry.created_at) {
+        const y = new Date(entry.created_at).getFullYear();
+        if (!isNaN(y)) {
+          years.add(y);
+        }
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [allLedger]);
+
+  const bankStatementData = useMemo(() => {
+    const matchedEntries = allLedger.filter(entry => {
+      if (!entry.created_at) return false;
+      const entryDate = new Date(entry.created_at);
+      
+      if (reportPeriod === 'daily') {
+        const targetDate = new Date(selectedDate);
+        return entryDate.getFullYear() === targetDate.getFullYear() &&
+               entryDate.getMonth() === targetDate.getMonth() &&
+               entryDate.getDate() === targetDate.getDate();
+      } else if (reportPeriod === 'monthly') {
+        const [yearStr, monthStr] = selectedMonth.split('-');
+        const targetYear = parseInt(yearStr) || new Date().getFullYear();
+        const targetMonth = (parseInt(monthStr) || 1) - 1;
+        return entryDate.getFullYear() === targetYear &&
+               entryDate.getMonth() === targetMonth;
+      } else if (reportPeriod === 'semi-annual') {
+        const isYearMatch = entryDate.getFullYear() === selectedSemiYear;
+        const isHalfMatch = selectedHalf === 'H1' 
+          ? entryDate.getMonth() < 6 
+          : entryDate.getMonth() >= 6;
+        return isYearMatch && isHalfMatch;
+      } else {
+        return entryDate.getFullYear() === selectedAnnualYear;
+      }
+    });
+
+    const sortedEntries = [...matchedEntries].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    let totalInflow = 0;
+    let totalOutflow = 0;
+    
+    const statementRows = sortedEntries.map(entry => {
+      const isInflow = entry.transaction_type === 'sale';
+      const amount = entry.amount;
+      if (isInflow) {
+        totalInflow += amount;
+      } else {
+        totalOutflow += amount;
+      }
+      
+      return {
+        ...entry,
+        isInflow,
+        amount
+      };
+    });
+
+    const netChange = totalInflow - totalOutflow;
+
+    return {
+      statementRows,
+      totalInflow,
+      totalOutflow,
+      netChange,
+      count: statementRows.length
+    };
+  }, [allLedger, reportPeriod, selectedDate, selectedMonth, selectedSemiYear, selectedHalf, selectedAnnualYear]);
+
+  const downloadBankStatementReport = () => {
+    let periodTitle = '';
+    let periodLabel = '';
+    let dateStrForFile = '';
+
+    if (reportPeriod === 'daily') {
+      const targetDate = new Date(selectedDate);
+      const formatted = targetDate.toLocaleDateString(undefined, { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      periodTitle = 'DAILY FINANCIAL STATEMENT';
+      periodLabel = `Date: ${formatted}`;
+      dateStrForFile = `Daily_${selectedDate}`;
+    } else if (reportPeriod === 'monthly') {
+      const [yearStr, monthStr] = selectedMonth.split('-');
+      const targetYear = parseInt(yearStr) || new Date().getFullYear();
+      const targetMonth = (parseInt(monthStr) || 1) - 1;
+      const dateObj = new Date(targetYear, targetMonth, 1);
+      const formatted = dateObj.toLocaleDateString(undefined, { 
+        year: 'numeric', 
+        month: 'long'
+      });
+      periodTitle = 'MONTHLY FINANCIAL STATEMENT';
+      periodLabel = `Month: ${formatted}`;
+      dateStrForFile = `Monthly_${selectedMonth}`;
+    } else if (reportPeriod === 'semi-annual') {
+      periodTitle = 'SEMI-ANNUAL FINANCIAL STATEMENT';
+      periodLabel = `Period: ${selectedHalf} ${selectedSemiYear}`;
+      dateStrForFile = `Semi-Annual_${selectedHalf}_${selectedSemiYear}`;
+    } else {
+      periodTitle = 'ANNUAL FINANCIAL STATEMENT';
+      periodLabel = `Year: ${selectedAnnualYear}`;
+      dateStrForFile = `Annual_${selectedAnnualYear}`;
+    }
+
+    const rows = bankStatementData.statementRows;
+
+    if (rows.length === 0) {
+      alert(`No transactions found for the selected period.`);
+      return;
+    }
+
+    setDownloadingReport(true);
+
+    try {
+      const doc = new jsPDF();
+      
+      // Outer Dark styling matching Sales.tsx but for financial statement
+      doc.setFillColor(15, 15, 15);
+      doc.rect(0, 0, 210, 297, 'F');
+      
+      // Header Section
+      doc.setTextColor(255, 215, 0); // Gold
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      doc.text('RETAILOS BANK STATEMENT', 15, 25);
+      
+      doc.setTextColor(200, 200, 200);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text(periodTitle, 15, 33);
+      doc.text(`Statement Period: ${periodLabel}`, 15, 39);
+      
+      // Metrics boxes/summary in PDF
+      doc.setFillColor(30, 30, 30);
+      doc.rect(15, 45, 180, 25, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('STATEMENT SUMMARY', 20, 51);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Total Inflows (+):  $${bankStatementData.totalInflow.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 20, 58);
+      doc.text(`Total Outflows (-): $${bankStatementData.totalOutflow.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 20, 64);
+      
+      const netPos = bankStatementData.netChange;
+      if (netPos >= 0) {
+        doc.setTextColor(16, 185, 129); // Green
+      } else {
+        doc.setTextColor(239, 68, 68); // Red
+      }
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Net Position:      $${netPos.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 110, 58);
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Total Transactions: ${rows.length}`, 110, 64);
+
+      // Create Statement Table rows
+      const tableBody = rows.map(item => {
+        const itemDate = new Date(item.created_at);
+        const dateStr = itemDate.toLocaleDateString(undefined, { 
+          month: 'short', 
+          day: 'numeric', 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+        
+        let desc = '';
+        if (item.transaction_type === 'sale') {
+          desc = `Sale: ${item.inventory?.name || 'Item'} (x${item.quantity || 1})`;
+        } else {
+          desc = item.description || item.transaction_type.replace('_', ' ');
+        }
+
+        const categoryName = summaries.find(s => s.category_id === item.category_id)?.category_name || 'Unknown';
+        const typeLabel = item.transaction_type.toUpperCase().replace('_', ' ');
+        
+        const inflowVal = item.isInflow ? `$${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-';
+        const outflowVal = !item.isInflow ? `$${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-';
+
+        return [
+          dateStr,
+          desc,
+          typeLabel,
+          categoryName,
+          inflowVal,
+          outflowVal
+        ];
+      });
+
+      autoTable(doc, {
+        startY: 75,
+        head: [['Date/Time', 'Description', 'Type', 'Category/Source', 'Inflow (+)', 'Outflow (-)']],
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillColor: [24, 24, 27], textColor: [255, 215, 0] },
+        bodyStyles: { fillColor: [15, 15, 15], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [22, 22, 24] },
+        margin: { top: 75 }
+      });
+
+      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(8);
+      doc.text('RetailOS Automated Financial Audit System - Confidential Bank Statement Format', 15, doc.internal.pageSize.height - 10);
+
+      doc.save(`Financial_Statement_${dateStrForFile}.pdf`);
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
+      setError('Failed to generate Statement PDF.');
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   if (loading && summaries.length === 0) return <Loading />;
 
   const totalExpenses = outflows
@@ -274,6 +528,267 @@ export default function Outflow() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Interactive Financial Statement Audit Card */}
+      <div className="vault-card overflow-hidden">
+        <div className="p-6 bg-[#050505] border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black flex items-center gap-2 text-white uppercase tracking-tighter">
+              <FileText size={20} className="text-[#FFD700]" />
+              Periodic Ledger Statement
+            </h2>
+            <p className="text-[10px] text-slate-500 mt-1 uppercase font-black tracking-widest">Unified Bank Statement Format (Inflow & Outflow)</p>
+          </div>
+          
+          {/* Period Selector Tabs */}
+          <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 md:w-80">
+            {([
+              { id: 'daily', label: 'Daily' },
+              { id: 'monthly', label: 'Monthly' },
+              { id: 'semi-annual', label: 'Semi-Annual' },
+              { id: 'annual', label: 'Annual' }
+            ] as const).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setReportPeriod(tab.id)}
+                className={cn(
+                  "flex-1 py-2 text-center text-[10px] font-black uppercase tracking-wider rounded-xl transition-all",
+                  reportPeriod === tab.id
+                    ? "bg-[#FFD700] text-[#0a0a0a] shadow-[0_0_15px_rgba(255,215,0,0.15)]"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left Column: Dynamic Controls & Audit Info */}
+          <div className="lg:col-span-4 flex flex-col justify-center space-y-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                Select {reportPeriod === 'semi-annual' ? 'Half-Year Period' : reportPeriod === 'annual' ? 'Target Year' : reportPeriod === 'monthly' ? 'Target Month' : 'Target Date'}
+              </label>
+              
+              {reportPeriod === 'daily' && (
+                <input 
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white font-medium"
+                />
+              )}
+
+              {reportPeriod === 'monthly' && (
+                <input 
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white font-medium animate-in fade-in duration-300"
+                />
+              )}
+
+              {reportPeriod === 'semi-annual' && (
+                <div className="flex gap-3 animate-in fade-in duration-300">
+                  <select
+                    value={selectedSemiYear}
+                    onChange={(e) => setSelectedSemiYear(parseInt(e.target.value) || new Date().getFullYear())}
+                    className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-[#0a0a0a] font-medium"
+                  >
+                    {availableYears.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedHalf}
+                    onChange={(e) => setSelectedHalf(e.target.value as 'H1' | 'H2')}
+                    className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-[#0a0a0a] font-medium"
+                  >
+                    <option value="H1">H1 (Jan-Jun)</option>
+                    <option value="H2">H2 (Jul-Dec)</option>
+                  </select>
+                </div>
+              )}
+
+              {reportPeriod === 'annual' && (
+                <select
+                  value={selectedAnnualYear}
+                  onChange={(e) => setSelectedAnnualYear(parseInt(e.target.value) || new Date().getFullYear())}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-[#0a0a0a] font-medium animate-in fade-in duration-300"
+                >
+                  {availableYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            
+            <div className="pt-2 flex flex-col gap-3">
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest leading-relaxed">
+                Matches <span className="text-white font-black">{bankStatementData.count}</span> ledger entries in timeframe.
+              </p>
+              <button 
+                type="button"
+                onClick={downloadBankStatementReport}
+                disabled={bankStatementData.count === 0 || downloadingReport}
+                className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-[#FFD700] text-[#0a0a0a] font-black uppercase text-[10px] tracking-widest rounded-2xl hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(255,215,0,0.15)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {downloadingReport ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} />
+                )}
+                <span>Download Statement</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Right Column: Statement Summary Metrics */}
+          <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {/* Total Inflows */}
+            <div className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-500/5 blur-xl rounded-full" />
+              <div className="relative z-10">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+                  Inflows (Deposits)
+                </span>
+                <p className="text-2xl font-black text-emerald-400 tracking-tighter">
+                  +${bankStatementData.totalInflow.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-[9px] text-slate-500 font-mono relative z-10">
+                <span className="flex items-center gap-1"><ArrowUpRight size={10} className="text-emerald-400" /> CREDITS</span>
+                <span>{bankStatementData.statementRows.filter(r => r.isInflow).length} Tx</span>
+              </div>
+            </div>
+
+            {/* Total Outflows */}
+            <div className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-rose-500/5 blur-xl rounded-full" />
+              <div className="relative z-10">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+                  Outflows (Withdrawals)
+                </span>
+                <p className="text-2xl font-black text-rose-400 tracking-tighter">
+                  -${bankStatementData.totalOutflow.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-[9px] text-slate-500 font-mono relative z-10">
+                <span className="flex items-center gap-1"><ArrowDownLeft size={10} className="text-rose-400" /> DEBITS</span>
+                <span>{bankStatementData.statementRows.filter(r => !r.isInflow).length} Tx</span>
+              </div>
+            </div>
+
+            {/* Net Position */}
+            <div className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/5 blur-xl rounded-full" />
+              <div className="relative z-10">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+                  Net Balance Position
+                </span>
+                <p className={cn(
+                  "text-2xl font-black tracking-tighter",
+                  bankStatementData.netChange >= 0 ? "text-white" : "text-rose-500"
+                )}>
+                  {bankStatementData.netChange >= 0 ? '+' : ''}${bankStatementData.netChange.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-[9px] text-slate-500 font-mono relative z-10">
+                <span>NET BALANCE CHANGE</span>
+                <span className={cn(
+                  "font-bold px-1.5 py-0.5 rounded text-[8px]",
+                  bankStatementData.netChange >= 0 ? "text-emerald-400 bg-emerald-500/10" : "text-rose-400 bg-rose-500/10"
+                )}>
+                  {bankStatementData.netChange >= 0 ? 'SURPLUS' : 'DEFICIT'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bank Statement Styled Ledger Records */}
+        <div className="border-t border-white/5 bg-[#030303]/40">
+          <div className="p-4 bg-white/5 border-b border-white/5 px-8 flex items-center justify-between">
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              Statement Ledger Entries ({bankStatementData.statementRows.length})
+            </span>
+            <span className="text-[9px] font-mono text-slate-600">CONFIDENTIAL BANK STATEMENT STANDARD</span>
+          </div>
+
+          <div className="overflow-x-auto max-h-96 overflow-y-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-white/5 border-b border-white/5">
+                  <th className="px-8 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Date/Time</th>
+                  <th className="px-8 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Transaction details</th>
+                  <th className="px-8 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Type</th>
+                  <th className="px-8 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Category</th>
+                  <th className="px-8 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Inflow (+)</th>
+                  <th className="px-8 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Outflow (-)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {bankStatementData.statementRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-8 py-16 text-center text-slate-600">
+                      <FileText size={32} className="mx-auto mb-2 text-slate-800" />
+                      <span className="text-[10px] font-black uppercase tracking-widest block">No Ledger Entries For Selected Timeframe</span>
+                    </td>
+                  </tr>
+                ) : (
+                  bankStatementData.statementRows.map((entry) => (
+                    <tr key={entry.id} className="hover:bg-white/5 transition-colors">
+                      <td className="px-8 py-3.5">
+                        <p className="text-xs font-black text-white uppercase tracking-tighter">
+                          {new Date(entry.created_at).toLocaleDateString()}
+                        </p>
+                        <p className="text-[9px] text-slate-600 font-mono">
+                          {new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </td>
+                      <td className="px-8 py-3.5">
+                        <p className="text-xs font-black text-white uppercase tracking-tight">
+                          {entry.isInflow ? (
+                            `Sale: ${entry.inventory?.name || 'Inventory Item'} (x${entry.quantity || 1})`
+                          ) : (
+                            entry.description || 'Outflow'
+                          )}
+                        </p>
+                      </td>
+                      <td className="px-8 py-3.5">
+                        <span className={cn(
+                          "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border",
+                          entry.isInflow 
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" 
+                            : entry.transaction_type.toLowerCase().includes('capital') 
+                              ? "bg-rose-500/10 text-rose-500 border-rose-500/20" 
+                              : "bg-[#FFD700]/10 text-[#FFD700] border-[#FFD700]/20"
+                        )}>
+                          {entry.transaction_type.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="px-8 py-3.5">
+                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-tighter">
+                          {summaries.find(s => s.category_id === entry.category_id)?.category_name || 'General'}
+                        </span>
+                      </td>
+                      <td className="px-8 py-3.5 text-right font-mono text-xs font-black text-emerald-400">
+                        {entry.isInflow ? `+$${entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                      </td>
+                      <td className="px-8 py-3.5 text-right font-mono text-xs font-black text-rose-400">
+                        {!entry.isInflow ? `-$${entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-8">

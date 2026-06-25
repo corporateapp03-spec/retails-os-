@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase, isConfigured } from '../lib/supabase';
 import { BusinessSummary } from '../types';
-import { TrendingUp, Wallet, ArrowDownCircle, AlertCircle } from 'lucide-react';
+import { TrendingUp, Wallet, ArrowDownCircle, AlertCircle, ShieldCheck, Coins } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export default function Dashboard() {
@@ -78,6 +78,18 @@ export default function Dashboard() {
 
     fetchData();
   }, []);
+
+  const financialMetrics = useMemo(() => {
+    const totalProfit = summaries.reduce((acc, s) => acc + (s.total_profit || 0), 0);
+    const totalCapitalHealth = summaries.reduce((acc, s) => acc + (s.capital_health || 0), 0);
+    const combinedTotal = totalProfit + totalCapitalHealth;
+
+    return {
+      totalProfit,
+      totalCapitalHealth,
+      combinedTotal
+    };
+  }, [summaries]);
 
   if (loading) {
     return (
@@ -162,7 +174,7 @@ export default function Dashboard() {
       )}
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-[#050505] border border-white/5 rounded-3xl p-8 flex items-center justify-between shadow-2xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD700]/5 blur-[60px] rounded-full" />
           <div className="relative z-10">
@@ -173,14 +185,40 @@ export default function Dashboard() {
           </div>
           <Wallet size={48} className="text-slate-800 group-hover:text-[#FFD700]/20 transition-colors" />
         </div>
+        
         <div className="vault-card p-8 flex items-center justify-between group">
           <div className="relative z-10">
             <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Net System Profit</p>
             <h2 className="text-4xl font-black mt-2 text-emerald-500 group-hover:drop-shadow-[0_0_10px_rgba(16,185,129,0.3)] transition-all">
-              ${(summaries.reduce((acc, s) => acc + (s.total_profit || 0), 0) ?? 0).toLocaleString()}
+              ${financialMetrics.totalProfit.toLocaleString()}
             </h2>
           </div>
           <TrendingUp size={48} className="text-emerald-500/10 group-hover:text-emerald-500/20 transition-colors" />
+        </div>
+
+        {/* New Requested Card: Sum of Available Profit & Available Capital Health Only */}
+        <div className="bg-[#050505] border border-white/5 rounded-3xl p-8 flex flex-col justify-between shadow-2xl relative overflow-hidden group hover:border-[#FFD700]/20 transition-all duration-300">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD700]/5 blur-[60px] rounded-full" />
+          <div className="relative z-10 w-full">
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Profit & Capital Health Sum</p>
+            <h2 className="text-4xl font-black mt-2 text-[#FFD700] transition-all">
+              ${financialMetrics.combinedTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </h2>
+            
+            <div className="mt-4 pt-4 border-t border-white/5 space-y-2">
+              <div className="flex justify-between items-center text-[10px] font-bold">
+                <span className="text-slate-400 uppercase tracking-widest">Available Profit Sum</span>
+                <span className="text-emerald-400 font-mono font-black">+${financialMetrics.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between items-center text-[10px] font-bold">
+                <span className="text-slate-400 uppercase tracking-widest">Capital Health Sum</span>
+                <span className="text-[#FFD700] font-mono font-black">${financialMetrics.totalCapitalHealth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          </div>
+          <div className="absolute bottom-6 right-6 opacity-10 group-hover:opacity-20 transition-opacity">
+            <ShieldCheck size={48} className="text-[#FFD700]" />
+          </div>
         </div>
       </div>
     </div>

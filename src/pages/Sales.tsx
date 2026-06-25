@@ -33,7 +33,18 @@ export default function Sales() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
   const [downloadingDate, setDownloadingDate] = useState<string | null>(null);
-  const [reportDate, setReportDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [reportPeriod, setReportPeriod] = useState<'daily' | 'monthly' | 'semi-annual' | 'annual'>('daily');
+  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [selectedSemiYear, setSelectedSemiYear] = useState<number>(() => new Date().getFullYear());
+  const [selectedHalf, setSelectedHalf] = useState<'H1' | 'H2'>(() => {
+    const month = new Date().getMonth();
+    return month < 6 ? 'H1' : 'H2';
+  });
+  const [selectedAnnualYear, setSelectedAnnualYear] = useState<number>(() => new Date().getFullYear());
 
   useEffect(() => {
     fetchSales();
@@ -263,44 +274,174 @@ export default function Sales() {
     }
   };
 
-  const downloadSpecificDateReport = () => {
-    const selectedDate = new Date(reportDate);
-    const dateStr = selectedDate.toLocaleDateString(undefined, { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-    
-    // Find matching sales in the full sales array
-    const matchingSales = sales.filter(s => {
-      const saleDate = new Date(s.created_at);
-      return saleDate.toDateString() === selectedDate.toDateString();
-    });
+  const downloadCurrentPeriodReport = () => {
+    let periodTitle = '';
+    let periodLabel = '';
+    let dateStrForFile = '';
 
-    if (matchingSales.length === 0) {
-      alert('No sales found for the selected date.');
+    if (reportPeriod === 'daily') {
+      const targetDate = new Date(selectedDate);
+      const formatted = targetDate.toLocaleDateString(undefined, { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      periodTitle = 'RETAILOS DAILY SALES REPORT';
+      periodLabel = `Selected Day: ${formatted}`;
+      dateStrForFile = `Daily_${selectedDate}`;
+    } else if (reportPeriod === 'monthly') {
+      const [yearStr, monthStr] = selectedMonth.split('-');
+      const targetYear = parseInt(yearStr) || new Date().getFullYear();
+      const targetMonth = (parseInt(monthStr) || 1) - 1;
+      const dateObj = new Date(targetYear, targetMonth, 1);
+      const formatted = dateObj.toLocaleDateString(undefined, { 
+        year: 'numeric', 
+        month: 'long'
+      });
+      periodTitle = 'RETAILOS MONTHLY SALES REPORT';
+      periodLabel = `Selected Month: ${formatted}`;
+      dateStrForFile = `Monthly_${selectedMonth}`;
+    } else if (reportPeriod === 'semi-annual') {
+      periodTitle = 'RETAILOS SEMI-ANNUAL SALES REPORT';
+      periodLabel = `Selected Half: ${selectedHalf} ${selectedSemiYear}`;
+      dateStrForFile = `Semi-Annual_${selectedHalf}_${selectedSemiYear}`;
+    } else {
+      periodTitle = 'RETAILOS ANNUAL SALES REPORT';
+      periodLabel = `Selected Year: ${selectedAnnualYear}`;
+      dateStrForFile = `Annual_${selectedAnnualYear}`;
+    }
+
+    const matchedSales = periodReportData.matchedSales || [];
+
+    if (matchedSales.length === 0) {
+      alert(`No sales found for the selected period.`);
       return;
     }
 
-    // Group items by transaction (timestamp) for the reporter
-    const transactionsMap: Record<string, any[]> = {};
-    matchingSales.forEach(s => {
-      if (!transactionsMap[s.created_at]) transactionsMap[s.created_at] = [];
-      transactionsMap[s.created_at].push(s);
-    });
+    setDownloadingDate(dateStrForFile);
 
-    const transactions = Object.entries(transactionsMap).map(([timestamp, items]) => ({
-      timestamp,
-      items
-    }));
+    try {
+      const doc = new jsPDF();
+      
+      doc.setFillColor(20, 20, 20);
+      doc.rect(0, 0, 210, 297, 'F');
+      
+      doc.setTextColor(255, 215, 0); // Gold
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      doc.text(periodTitle, 15, 25);
+      
+      doc.setTextColor(200, 200, 200);
+      doc.setFontSize(12);
+      doc.text(`Report Period: ${periodLabel}`, 15, 35);
+      
+      const totalRev = periodReportData.revenue;
+      const totalProf = periodReportData.profit;
 
-    downloadDayReport(dateStr, transactions);
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      doc.text(`Total Revenue: $${totalRev.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 45);
+      doc.text(`Total Net Profit: $${totalProf.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
+      doc.text(`Transaction / Item Count: ${matchedSales.length}`, 15, 59);
+
+      const tableBody = matchedSales.map((item: LedgerEntry) => {
+        const itemDate = new Date(item.created_at);
+        const dateStr = itemDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return [
+          dateStr,
+          item.inventory?.name || item.description || 'Unknown',
+          item.quantity || 1,
+          `$${safeNum(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          `$${(safeNum(item.amount) - (safeNum(item.inventory?.cost_price) * (safeNum(item.quantity) || 1))).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          item.fund_source || 'Unknown'
+        ];
+      });
+
+      autoTable(doc, {
+        startY: 70,
+        head: [['Date/Time', 'Product', 'Qty', 'Amount', 'Profit', 'Source']],
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillColor: [30, 30, 30], textColor: [255, 215, 0] },
+        bodyStyles: { fillColor: [15, 15, 15], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [25, 25, 25] },
+        margin: { top: 70 }
+      });
+
+      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(8);
+      doc.text('Verified Archive Ledger - RetailOS Financial Engine', 15, doc.internal.pageSize.height - 10);
+
+      doc.save(`Sales_Report_${dateStrForFile.replace(/ /g, '_')}.pdf`);
+    } catch (err) {
+      console.error('PDF Error:', err);
+      setError('Failed to generate PDF report.');
+    } finally {
+      setDownloadingDate(null);
+    }
   };
 
   const safeNum = (val: any) => {
     const n = parseFloat(val);
     return isNaN(n) ? 0 : n;
   };
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([new Date().getFullYear()]);
+    sales.forEach(sale => {
+      if (sale.created_at) {
+        const y = new Date(sale.created_at).getFullYear();
+        if (!isNaN(y)) {
+          years.add(y);
+        }
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [sales]);
+
+  const periodReportData = useMemo(() => {
+    const matchedSales = sales.filter(sale => {
+      if (!sale.created_at) return false;
+      const saleDate = new Date(sale.created_at);
+      
+      if (reportPeriod === 'daily') {
+        const targetDate = new Date(selectedDate);
+        return saleDate.getFullYear() === targetDate.getFullYear() &&
+               saleDate.getMonth() === targetDate.getMonth() &&
+               saleDate.getDate() === targetDate.getDate();
+      } else if (reportPeriod === 'monthly') {
+        const [yearStr, monthStr] = selectedMonth.split('-');
+        const targetYear = parseInt(yearStr) || new Date().getFullYear();
+        const targetMonth = (parseInt(monthStr) || 1) - 1;
+        return saleDate.getFullYear() === targetYear &&
+               saleDate.getMonth() === targetMonth;
+      } else if (reportPeriod === 'semi-annual') {
+        const isYearMatch = saleDate.getFullYear() === selectedSemiYear;
+        const isHalfMatch = selectedHalf === 'H1' 
+          ? saleDate.getMonth() < 6 
+          : saleDate.getMonth() >= 6;
+        return isYearMatch && isHalfMatch;
+      } else {
+        return saleDate.getFullYear() === selectedAnnualYear;
+      }
+    });
+
+    const revenue = matchedSales.reduce((acc, sale) => acc + safeNum(sale.amount), 0);
+    const profit = matchedSales.reduce((acc, sale) => {
+      const amount = safeNum(sale.amount);
+      const costPerUnit = safeNum(sale.inventory?.cost_price);
+      const quantity = safeNum(sale.quantity) || 1;
+      const totalCost = costPerUnit * quantity;
+      return acc + (amount - totalCost);
+    }, 0);
+
+    return {
+      revenue,
+      profit,
+      count: matchedSales.length,
+      matchedSales
+    };
+  }, [sales, reportPeriod, selectedDate, selectedMonth, selectedSemiYear, selectedHalf, selectedAnnualYear]);
 
   const filteredSales = sales.filter(sale => 
     (sale.inventory?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -391,6 +532,164 @@ export default function Sales() {
         </div>
       </div>
 
+      {/* Interactive Periodic Audit Card */}
+      <div className="vault-card overflow-hidden">
+        <div className="p-6 bg-[#050505] border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black flex items-center gap-2 text-white uppercase tracking-tighter">
+              <Calendar size={20} className="text-[#FFD700]" />
+              Periodic Sales Report
+            </h2>
+            <p className="text-[10px] text-slate-500 mt-1 uppercase font-black tracking-widest">Interactive Audit & Analysis</p>
+          </div>
+          
+          {/* Period Selector Tabs */}
+          <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 md:w-80">
+            {([
+              { id: 'daily', label: 'Daily' },
+              { id: 'monthly', label: 'Monthly' },
+              { id: 'semi-annual', label: 'Semi-Annual' },
+              { id: 'annual', label: 'Annual' }
+            ] as const).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setReportPeriod(tab.id)}
+                className={cn(
+                  "flex-1 py-2 text-center text-[10px] font-black uppercase tracking-wider rounded-xl transition-all",
+                  reportPeriod === tab.id
+                    ? "bg-[#FFD700] text-[#0a0a0a] shadow-[0_0_15px_rgba(255,215,0,0.15)]"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left Column: Dynamic Controls */}
+          <div className="lg:col-span-4 flex flex-col justify-center space-y-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                Select {reportPeriod === 'semi-annual' ? 'Half-Year Period' : reportPeriod === 'annual' ? 'Target Year' : reportPeriod === 'monthly' ? 'Target Month' : 'Target Date'}
+              </label>
+              
+              {reportPeriod === 'daily' && (
+                <input 
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white font-medium"
+                />
+              )}
+
+              {reportPeriod === 'monthly' && (
+                <input 
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white font-medium animate-in fade-in duration-300"
+                />
+              )}
+
+              {reportPeriod === 'semi-annual' && (
+                <div className="flex gap-3 animate-in fade-in duration-300">
+                  <select
+                    value={selectedSemiYear}
+                    onChange={(e) => setSelectedSemiYear(parseInt(e.target.value) || new Date().getFullYear())}
+                    className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white font-medium"
+                  >
+                    {availableYears.map(year => (
+                      <option key={year} value={year} className="bg-[#0a0a0a] text-white">{year}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedHalf}
+                    onChange={(e) => setSelectedHalf(e.target.value as 'H1' | 'H2')}
+                    className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white font-medium"
+                  >
+                    <option value="H1" className="bg-[#0a0a0a] text-white">H1 (Jan-Jun)</option>
+                    <option value="H2" className="bg-[#0a0a0a] text-white">H2 (Jul-Dec)</option>
+                  </select>
+                </div>
+              )}
+
+              {reportPeriod === 'annual' && (
+                <select
+                  value={selectedAnnualYear}
+                  onChange={(e) => setSelectedAnnualYear(parseInt(e.target.value) || new Date().getFullYear())}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm focus:border-[#FFD700]/50 outline-none transition-all text-white font-medium animate-in fade-in duration-300"
+                >
+                  {availableYears.map(year => (
+                    <option key={year} value={year} className="bg-[#0a0a0a] text-white">{year}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            
+            <div className="pt-2 flex flex-col gap-3">
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest leading-relaxed">
+                Matches <span className="text-white font-black">{periodReportData.count}</span> sales recorded in archive.
+              </p>
+              <button 
+                onClick={downloadCurrentPeriodReport}
+                disabled={periodReportData.count === 0 || downloadingDate !== null}
+                className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-[#FFD700] text-[#0a0a0a] font-black uppercase text-[10px] tracking-widest rounded-2xl hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(255,215,0,0.15)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {downloadingDate !== null ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} />
+                )}
+                <span>Download {reportPeriod === 'daily' ? 'Daily' : reportPeriod === 'monthly' ? 'Monthly' : reportPeriod === 'semi-annual' ? 'Semi-Annual' : 'Annual'} Report</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Right Column: Display Metrics */}
+          <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {/* Revenue card */}
+            <div className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between group/metric relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-[#FFD700]/5 blur-2xl rounded-full" />
+              <div className="relative z-10">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+                  Revenue ({reportPeriod === 'daily' ? 'Selected Day' : reportPeriod === 'monthly' ? 'Selected Month' : reportPeriod === 'semi-annual' ? 'Selected Half' : 'Selected Year'})
+                </span>
+                <p className="text-3xl font-black text-[#FFD700] tracking-tighter">
+                  ${periodReportData.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="mt-6 flex items-center justify-between text-[10px] text-slate-600 font-mono relative z-10">
+                <span>GROSS SALES</span>
+                <span className="text-slate-500 font-bold">{periodReportData.count} ITEMS</span>
+              </div>
+            </div>
+
+            {/* Profit card */}
+            <div className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between group/metric relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 blur-2xl rounded-full" />
+              <div className="relative z-10">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+                  Net Profit ({reportPeriod === 'daily' ? 'Selected Day' : reportPeriod === 'monthly' ? 'Selected Month' : reportPeriod === 'semi-annual' ? 'Selected Half' : 'Selected Year'})
+                </span>
+                <p className="text-3xl font-black text-blue-400 tracking-tighter">
+                  ${periodReportData.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="mt-6 flex items-center justify-between text-[10px] text-slate-600 font-mono relative z-10">
+                <span>NET MARGIN</span>
+                <span className={cn("font-bold px-2 py-0.5 rounded", periodReportData.profit >= 0 ? "text-emerald-400 bg-emerald-500/10" : "text-rose-400 bg-rose-500/10")}>
+                  {periodReportData.revenue > 0 
+                    ? `${((periodReportData.profit / periodReportData.revenue) * 100).toFixed(1)}%` 
+                    : '0.0%'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Header Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-[#050505] border border-white/5 rounded-3xl p-8 flex items-center justify-between shadow-2xl relative overflow-hidden group">
@@ -445,16 +744,17 @@ export default function Sales() {
         <div className="flex items-center gap-3 bg-white/5 p-2 rounded-[1.5rem] border border-white/10">
           <div className="flex items-center gap-2 pl-3">
             <Calendar size={16} className="text-slate-500" />
-            <input 
-              type="date"
-              value={reportDate}
-              onChange={(e) => setReportDate(e.target.value)}
-              className="bg-transparent text-white text-xs font-black uppercase outline-none"
-            />
+            <span className="text-white text-xs font-black uppercase tracking-wider">
+              {reportPeriod === 'daily' && `Daily: ${selectedDate}`}
+              {reportPeriod === 'monthly' && `Monthly: ${selectedMonth}`}
+              {reportPeriod === 'semi-annual' && `Semi-Annual: ${selectedHalf} ${selectedSemiYear}`}
+              {reportPeriod === 'annual' && `Annual: ${selectedAnnualYear}`}
+            </span>
           </div>
           <button 
-            onClick={downloadSpecificDateReport}
-            className="px-6 py-2.5 bg-[#FFD700] text-[#0a0a0a] font-black uppercase text-[10px] tracking-widest rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg"
+            onClick={downloadCurrentPeriodReport}
+            disabled={periodReportData.count === 0 || downloadingDate !== null}
+            className="px-6 py-2.5 bg-[#FFD700] text-[#0a0a0a] font-black uppercase text-[10px] tracking-widest rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg disabled:opacity-50"
           >
             Download Report
           </button>
