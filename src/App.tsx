@@ -22,15 +22,17 @@ import POS from './pages/POS';
 import Sales from './pages/Sales';
 import Outflow from './pages/Outflow';
 import ProfitDistribution from './pages/ProfitDistribution';
+import BusinessIntelligenceReport from './pages/BusinessIntelligenceReport';
+import TaxManager from './pages/TaxManager';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import PinGuard from './components/PinGuard';
 import ThemeSwitcher from './components/ThemeSwitcher';
 import { SafeRender } from './components/SafeRender';
-import { AlertTriangle, Key, ExternalLink, Settings as SettingsIcon } from 'lucide-react';
+import { AlertTriangle, Key, ExternalLink, Settings as SettingsIcon, Building2, Receipt } from 'lucide-react';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'profit-distribution' | 'settings';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'profit-distribution' | 'bi-report' | 'tax-manager' | 'settings';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -209,6 +211,8 @@ export default function App() {
     { id: 'sales', label: 'Sales Archive', icon: History },
     { id: 'outflow', label: 'Outflow Guardian', icon: ShieldCheck },
     { id: 'profit-distribution', label: 'Profit Distribution', icon: TrendingUp },
+    { id: 'bi-report', label: 'Loan & BI Report', icon: Building2 },
+    { id: 'tax-manager', label: 'AI Tax Manager', icon: Receipt },
     { id: 'settings', label: 'Security Settings', icon: SettingsIcon },
   ];
 
@@ -331,13 +335,15 @@ export default function App() {
           <div className="absolute bottom-0 left-0 w-full sm:w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />
           
           <div className="relative z-10 w-full max-w-[1400px] mx-auto">
-            <PinGuard protectedPages={['dashboard', 'outflow', 'sales', 'profit-distribution']} activePage={activePage}>
+            <PinGuard protectedPages={['dashboard', 'outflow', 'sales', 'profit-distribution', 'bi-report', 'tax-manager']} activePage={activePage}>
               {activePage === 'dashboard' && <Dashboard />}
               {activePage === 'inventory' && <Inventory />}
               {activePage === 'pos' && <POS />}
               {activePage === 'sales' && <Sales />}
               {activePage === 'outflow' && <Outflow />}
               {activePage === 'profit-distribution' && <ProfitDistribution />}
+              {activePage === 'bi-report' && <BusinessIntelligenceReport />}
+              {activePage === 'tax-manager' && <TaxManager />}
               {activePage === 'settings' && <Settings />}
             </PinGuard>
           </div>
