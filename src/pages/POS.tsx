@@ -754,7 +754,7 @@ export default function POS() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-0 lg:h-[calc(100vh-175px)] gap-4 lg:gap-6 overflow-visible lg:overflow-hidden relative">
+    <div className="flex flex-col lg:flex-row min-h-0 lg:h-[calc(100vh-85px)] gap-4 lg:gap-6 overflow-visible lg:overflow-hidden relative">
       
       {/* Offline POS Header Status Bar */}
       <div className="w-full flex flex-col md:flex-row justify-between items-center gap-4 bg-[#050505] border border-white/5 p-4 rounded-3xl lg:hidden">
@@ -972,36 +972,36 @@ export default function POS() {
       </div>
 
       {/* Right Pane: Checkout Cart (42%) */}
-      <div className="flex-none lg:flex-[0.42] h-[650px] lg:h-full flex flex-col bg-[#0d0d0d]/80 rounded-3xl border border-white/5 shadow-2xl overflow-hidden relative min-h-0">
+      <div className="flex-none lg:flex-[0.42] min-h-[600px] lg:h-full flex flex-col bg-[#0d0d0d]/80 rounded-3xl border border-white/5 shadow-2xl overflow-hidden relative min-h-0">
         
         {/* Cart Top Controls */}
-        <div className="p-4 border-b border-white/10 bg-white/5 flex flex-col gap-3 shrink-0">
+        <div className="p-2.5 px-3 border-b border-white/10 bg-white/5 flex flex-col gap-1.5 shrink-0">
           <div className="flex justify-between items-center">
             <h2 className="text-xs font-black text-[#FFD700] uppercase tracking-widest flex items-center gap-2">
-              <ShoppingCart size={16} />
+              <ShoppingCart size={15} />
               Shopping Cart
             </h2>
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => executeWithManagerPermission('flush_cart', () => setCart([]))}
-                className="text-[10px] font-black text-rose-500 uppercase hover:bg-rose-500/10 px-2 py-1 rounded transition-all"
+                className="text-[10px] font-black text-rose-500 uppercase hover:bg-rose-500/10 px-2 py-0.5 rounded transition-all"
               >
                 Flush Cart
               </button>
-              <span className="text-[10px] font-black bg-white/10 px-2 py-1 rounded text-slate-400 font-mono">
-                {cart.length} SKU
+              <span className="text-[10px] font-black bg-white/10 px-2 py-0.5 rounded text-slate-300 font-mono">
+                {cart.length} {cart.length === 1 ? 'SKU' : 'SKUs'}
               </span>
             </div>
           </div>
 
           {/* Customer Selection widget */}
-          <div className="grid grid-cols-1 gap-1 pt-1">
-            <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Customer Assignment</label>
-            <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Client:</label>
+            <div className="flex gap-1.5 flex-1 min-w-0">
               <select 
                 value={selectedCustomer}
                 onChange={(e) => setSelectedCustomer(e.target.value)}
-                className="flex-1 bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-[#FFD700]/50 text-slate-300"
+                className="flex-1 bg-[#0a0a0a] border border-white/10 rounded-lg px-2 py-0.5 text-xs font-bold outline-none focus:border-[#FFD700]/50 text-slate-200 truncate"
               >
                 {customers.map(c => (
                   <option key={c.id} value={c.name} className="bg-[#0a0a0a] text-white">
@@ -1012,7 +1012,7 @@ export default function POS() {
               <button 
                 type="button"
                 onClick={() => setShowAddCustomerModal(true)}
-                className="px-3 bg-white/5 border border-white/10 text-[#FFD700] rounded-xl hover:bg-white/10 transition-colors text-xs font-bold"
+                className="px-2 py-0.5 bg-white/5 border border-white/10 text-[#FFD700] rounded-lg hover:bg-white/10 transition-colors text-xs font-bold shrink-0"
                 title="Add Client"
               >
                 +
@@ -1022,7 +1022,7 @@ export default function POS() {
         </div>
 
         {/* Cart items scrollable container */}
-        <div className="flex-1 overflow-y-auto overscroll-y-contain p-4 flex flex-col gap-3 custom-scrollbar-gold min-h-0">
+        <div className="flex-1 overflow-y-auto overscroll-y-contain p-2 flex flex-col gap-1.5 custom-scrollbar-gold min-h-[280px] lg:min-h-[300px]">
           {cart.length > 0 ? (
             [...cart].reverse().map(c => {
               const currentPrice = getItemPrice(c);
@@ -1030,58 +1030,61 @@ export default function POS() {
               const isOverridden = currentPrice !== originalPrice;
               
               return (
-                <div key={c.item.id} className="p-3.5 bg-white/5 rounded-2xl border border-white/5 animate-in slide-in-from-top-4 relative group">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex-1 mr-2">
-                      <p className="font-black text-white text-xs leading-tight">{c.item.name}</p>
-                      <div className="flex items-center gap-1.5 mt-1">
+                <div key={c.item.id} className="p-2 bg-white/5 hover:bg-white/[0.08] rounded-lg border border-white/5 animate-in slide-in-from-top-1 relative group transition-colors">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-white text-xs leading-tight truncate" title={c.item.name}>{c.item.name}</p>
+                      <div className="flex items-center gap-1 mt-0.5">
                         <span className={cn(
                           "text-[9px] font-mono",
-                          isOverridden ? "text-amber-500 font-black line-through" : "text-slate-500"
+                          isOverridden ? "text-amber-500 font-bold line-through" : "text-slate-400"
                         )}>
                           ${originalPrice.toLocaleString()} ea
                         </span>
                         {isOverridden && (
-                          <span className="text-[9px] font-mono text-emerald-400 font-black">
+                          <span className="text-[9px] font-mono text-emerald-400 font-bold">
                             ${currentPrice.toLocaleString()} ea (Overridden)
                           </span>
                         )}
                       </div>
                     </div>
-                    <p className="font-black text-[#FFD700] text-xs">
-                      ${(currentPrice * c.quantity).toLocaleString()}
+
+                    <p className="font-black text-[#FFD700] text-xs font-mono shrink-0">
+                      ${(currentPrice * c.quantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                   </div>
-                  <div className="flex items-center justify-between mt-3">
-                    <div className="flex items-center bg-[#0a0a0a] rounded-xl border border-white/10">
+
+                  <div className="flex items-center justify-between mt-1.5 pt-1 border-t border-white/5">
+                    <div className="flex items-center bg-[#0a0a0a] rounded-md border border-white/10">
                       <button 
                         onClick={() => updateQuantity(c.item.id, -1)}
-                        className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-white transition-colors"
+                        className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
                       >
-                        <Minus size={14} />
+                        <Minus size={11} />
                       </button>
-                      <span className="w-6 text-center font-black text-white text-xs">{c.quantity}</span>
+                      <span className="w-5 text-center font-black text-white text-xs">{c.quantity}</span>
                       <button 
                         onClick={() => updateQuantity(c.item.id, 1)}
-                        className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-white transition-colors"
+                        className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
                       >
-                        <Plus size={14} />
+                        <Plus size={11} />
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                       <button 
                         onClick={() => openEditCartItem(c)}
-                        className="p-1.5 bg-white/5 hover:bg-[#FFD700]/10 text-slate-400 hover:text-[#FFD700] border border-white/5 rounded-lg transition-colors text-[10px] font-bold"
+                        className="px-1.5 py-0.5 bg-white/5 hover:bg-[#FFD700]/10 text-slate-300 hover:text-[#FFD700] border border-white/5 rounded transition-colors text-[9px] font-bold"
                         title="Edit Item Price/Qty"
                       >
-                        Edit Item
+                        Edit
                       </button>
                       <button 
                         onClick={() => updateQuantity(c.item.id, -c.quantity)}
-                        className="p-1.5 text-rose-500/50 hover:text-rose-500 hover:bg-rose-500/5 rounded-lg transition-colors"
+                        className="p-1 text-rose-500/60 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-colors"
+                        title="Remove Item"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={12} />
                       </button>
                     </div>
                   </div>
@@ -1090,20 +1093,20 @@ export default function POS() {
             })
           ) : (
             <div className="h-full flex flex-col items-center justify-center opacity-20 py-12 flex-1">
-              <ShoppingCart size={40} className="text-[#FFD700] mb-2" />
+              <ShoppingCart size={36} className="text-[#FFD700] mb-2" />
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Cart Empty</p>
             </div>
           )}
         </div>
 
         {/* Totals Computation sticky footer */}
-        <div className="p-4 bg-[#0a0a0a] border-t border-white/10 space-y-4 shrink-0">
+        <div className="p-2.5 bg-[#0a0a0a] border-t border-white/10 space-y-2 shrink-0">
           
           {/* Amount Paid input widget */}
-          <div className="bg-white/5 p-3.5 rounded-2xl border border-white/5 space-y-2">
+          <div className="bg-white/5 p-2 rounded-xl border border-white/5 space-y-1">
             <div className="flex justify-between items-center">
-              <span className="text-[9px] font-black text-[#FFD700] uppercase tracking-widest flex items-center gap-1.5">
-                <CreditCard size={12} /> Amount Paid
+              <span className="text-[9px] font-black text-[#FFD700] uppercase tracking-widest flex items-center gap-1">
+                <CreditCard size={11} /> Amount Paid
               </span>
               <span className="text-[8px] font-mono text-slate-500 uppercase">
                 Required for Checkout
@@ -1119,29 +1122,29 @@ export default function POS() {
                   const val = e.target.value.replace(/[^0-9.]/g, '');
                   setAmountPaidInput(val);
                 }}
-                className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl py-3 px-3 pl-8 text-sm font-bold text-white outline-none focus:border-[#FFD700]/50 placeholder:text-slate-700"
+                className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-1 px-2 pl-6 text-xs font-bold text-white outline-none focus:border-[#FFD700]/50 placeholder:text-slate-700"
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#FFD700] font-bold text-xs">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[#FFD700] font-bold text-xs">
                 $
               </span>
               {amountPaidInput && (
                 <button
                   type="button"
                   onClick={() => setAmountPaidInput('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
                 >
-                  <X size={14} />
+                  <X size={12} />
                 </button>
               )}
             </div>
             {/* Quick cash suggest buttons */}
-            <div className="flex gap-1.5 pt-1">
+            <div className="flex gap-1 pt-0.5">
               {[Math.ceil(totalBeforeDiscount), Math.ceil(totalBeforeDiscount / 10) * 10, Math.ceil(totalBeforeDiscount / 50) * 50].filter(v => v >= totalBeforeDiscount).map((suggestVal, i) => (
                 <button
                   key={i}
                   type="button"
                   onClick={() => setAmountPaidInput(String(suggestVal))}
-                  className="flex-1 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-400 hover:text-white rounded-lg text-[9px] font-mono transition-all"
+                  className="flex-1 py-0.5 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 hover:text-white rounded text-[8px] font-mono transition-all"
                 >
                   ${suggestVal}
                 </button>
@@ -1149,70 +1152,70 @@ export default function POS() {
               <button
                 type="button"
                 onClick={() => setAmountPaidInput(String(totalBeforeDiscount.toFixed(2)))}
-                className="flex-1 py-1.5 bg-[#FFD700]/10 hover:bg-[#FFD700]/20 border border-[#FFD700]/10 text-[#FFD700] rounded-lg text-[9px] font-black tracking-widest uppercase transition-all"
+                className="flex-1 py-0.5 bg-[#FFD700]/10 hover:bg-[#FFD700]/20 border border-[#FFD700]/20 text-[#FFD700] rounded text-[8px] font-black tracking-widest uppercase transition-all"
               >
                 Exact Cash
               </button>
             </div>
           </div>
 
-          <div className="space-y-1.5 border-t border-white/5 pt-2">
-            <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest">
+          <div className="space-y-0.5 border-t border-white/5 pt-1">
+            <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
               <span>Subtotal</span>
               <span className="text-white font-mono">${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
 
             {posSettings.taxRate > 0 && (
-              <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                 <span>Tax ({posSettings.taxRate}%)</span>
                 <span className="text-white font-mono">${taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
               </div>
             )}
 
             {amountPaidInput !== '' && (
-              <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <div className="flex justify-between text-[10px] font-bold text-slate-300 uppercase tracking-wider">
                 <span>Amount Paid</span>
                 <span className="text-[#FFD700] font-mono font-black">${amountPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
               </div>
             )}
 
             {discountAmount > 0 && (
-              <div className="flex justify-between text-[10px] font-black text-rose-400 uppercase tracking-widest animate-pulse">
-                <span>Transaction Discount</span>
+              <div className="flex justify-between text-[10px] font-bold text-rose-400 uppercase tracking-wider">
+                <span>Discount</span>
                 <span className="font-mono">-${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
               </div>
             )}
 
             {remainingBalance > 0 && (
-              <div className="flex justify-between text-[10px] font-black text-amber-500 uppercase tracking-widest">
-                <span>Remaining Balance</span>
+              <div className="flex justify-between text-[10px] font-bold text-amber-500 uppercase tracking-wider">
+                <span>Remaining</span>
                 <span className="font-mono">${remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
               </div>
             )}
 
             {changeAmount > 0 && (
-              <div className="flex justify-between text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+              <div className="flex justify-between text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
                 <span>Change</span>
                 <span className="font-mono">${changeAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
               </div>
             )}
 
-            <div className="flex justify-between text-xs font-black text-white uppercase tracking-widest pt-2 border-t border-white/5">
+            <div className="flex justify-between text-xs font-black text-white uppercase tracking-widest pt-1 border-t border-white/5">
               <span className="text-[#FFD700]">Final Total</span>
-              <span className="text-lg text-[#FFD700] font-mono font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <span className="text-base text-[#FFD700] font-mono font-black">${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
 
             {/* Payment options */}
-            <div className="grid grid-cols-3 gap-2 pt-2">
+            <div className="grid grid-cols-3 gap-1 pt-0.5">
               {(['Cash', 'Card', 'Credit'] as const).map(method => (
                 <button
                   key={method}
                   onClick={() => setPaymentMethod(method)}
                   className={cn(
-                    "py-2.5 rounded-xl text-[10px] font-black transition-all border uppercase tracking-widest",
+                    "py-1 rounded-lg text-[9px] font-black transition-all border uppercase tracking-wider",
                     paymentMethod === method 
-                      ? "bg-[#FFD700] border-[#FFD700] text-[#0a0a0a] shadow-[0_0_15px_rgba(255,215,0,0.15)]" 
-                      : "bg-transparent border-white/10 text-slate-500 hover:border-white/20"
+                      ? "bg-[#FFD700] border-[#FFD700] text-[#0a0a0a] shadow-sm" 
+                      : "bg-transparent border-white/10 text-slate-400 hover:border-white/20"
                   )}
                 >
                   {method}
@@ -1225,17 +1228,17 @@ export default function POS() {
             disabled={cart.length === 0 || isProcessing}
             onClick={handleFinalizeSale}
             className={cn(
-              "w-full py-4.5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all text-sm uppercase tracking-widest border",
+              "w-full py-2.5 rounded-xl font-black flex items-center justify-center gap-2 transition-all text-xs uppercase tracking-widest border",
               cart.length === 0 || isProcessing
-                ? "bg-white/5 border-transparent text-slate-700 cursor-not-allowed"
-                : "bg-[#FFD700] border-[#FFD700] text-[#0a0a0a] hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_30px_rgba(255,215,0,0.25)]"
+                ? "bg-white/5 border-transparent text-slate-600 cursor-not-allowed"
+                : "bg-[#FFD700] border-[#FFD700] text-[#0a0a0a] hover:scale-[1.01] active:scale-[0.99] shadow-lg shadow-[#FFD700]/20"
             )}
           >
             {isProcessing ? (
-              <RefreshCw className="animate-spin" size={20} />
+              <RefreshCw className="animate-spin" size={15} />
             ) : (
               <>
-                <CheckCircle2 size={20} />
+                <CheckCircle2 size={15} />
                 Finalize Sale
               </>
             )}
