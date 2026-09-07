@@ -401,7 +401,7 @@ export default function POS() {
       amount: (c.customPrice !== undefined ? c.customPrice : safeNum(c.item.selling_price)) * safeNum(c.quantity),
       transaction_type: 'sale' as const,
       fund_source: sale.paymentMethod,
-      description: `Sale: ${c.item.name} (x${c.quantity})` + (sale.customerName ? ` - Customer: ${sale.customerName}` : ''),
+      description: `Sale: ${c.item.name} (x${c.quantity})` + (sale.customerName ? ` - Customer: ${sale.customerName}` : '') + ` (Sale Ref: ${sale.id})`,
       created_at: sale.timestamp
     }));
 

@@ -15,7 +15,8 @@ import {
   X,
   ShoppingCart,
   Loader2,
-  Download
+  Download,
+  Tag
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Loading from '../components/Loading';
@@ -25,6 +26,7 @@ import autoTable from 'jspdf-autotable';
 
 export default function Sales() {
   const [sales, setSales] = useState<LedgerEntry[]>([]);
+  const [discounts, setDiscounts] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,13 +57,24 @@ export default function Sales() {
     setLoading(true);
     setError(null);
     try {
-      const { data: ledgerData, error: ledgerError } = await supabase
-        .from('ledger')
-        .select('*')
-        .eq('transaction_type', 'sale')
-        .order('created_at', { ascending: false });
+      const [salesRes, discountsRes] = await Promise.all([
+        supabase
+          .from('ledger')
+          .select('*')
+          .eq('transaction_type', 'sale')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('ledger')
+          .select('*')
+          .eq('transaction_type', 'expense')
+          .ilike('description', '%discount%')
+          .order('created_at', { ascending: false })
+      ]);
 
-      if (ledgerError) throw ledgerError;
+      if (salesRes.error) throw salesRes.error;
+      const ledgerData = salesRes.data || [];
+      const discountData = discountsRes.data || [];
+      setDiscounts(discountData);
 
       if (ledgerData && ledgerData.length > 0) {
         const itemIds = [...new Set(ledgerData.map(s => s.inventory_item_id).filter(Boolean))];
@@ -103,7 +116,7 @@ export default function Sales() {
     }
   }
 
-  async function handleReverseTransaction(transactionSales: LedgerEntry[]) {
+  async function handleReverseTransaction(transactionSales: LedgerEntry[], discountEntryId?: string) {
     if (!window.confirm(`Reverse this entire sale (${transactionSales.length} items)? This will restore stock to inventory and remove the ledger entries.`)) {
       return;
     }
@@ -122,7 +135,7 @@ export default function Sales() {
 
           if (fetchError) throw fetchError;
 
-          const newQuantity = (currentItem?.quantity || 0) + sale.quantity;
+          const newQuantity = (currentItem?.quantity || 0) + (safeNum(sale.quantity) || 1);
           const { error: invError } = await supabase
             .from('inventory')
             .update({ quantity: newQuantity })
@@ -138,6 +151,15 @@ export default function Sales() {
           .eq('id', sale.id);
 
         if (deleteError) throw deleteError;
+      }
+
+      // 3. Delete matching discount expense if it exists
+      if (discountEntryId) {
+        const { error: discDeleteError } = await supabase
+          .from('ledger')
+          .delete()
+          .eq('id', discountEntryId);
+        if (discDeleteError) console.warn('Could not delete discount entry:', discDeleteError);
       }
 
       fetchSales();
@@ -224,20 +246,22 @@ export default function Sales() {
       doc.setFontSize(12);
       doc.text(`Report Period: ${dateStr}`, 15, 35);
       
-      // Calculate day totals
-      const daySales = transactions.flatMap(t => t.items);
-      const dayRevenue = daySales.reduce((acc, s) => acc + safeNum(s.amount), 0);
-      const dayProfit = daySales.reduce((acc, s) => {
-        const amount = safeNum(s.amount);
-        const cost = safeNum(s.inventory?.cost_price) * (safeNum(s.quantity) || 1);
-        return acc + (amount - cost);
-      }, 0);
+      // Calculate day totals with discounts deducted
+      const dayRevenue = transactions.reduce((acc, t) => acc + (t.netAmount !== undefined ? t.netAmount : t.items.reduce((s: number, i: any) => s + safeNum(i.amount), 0)), 0);
+      const dayProfit = transactions.reduce((acc, t) => acc + (t.profit !== undefined ? t.profit : 0), 0);
+      const dayDiscounts = transactions.reduce((acc, t) => acc + (t.discountAmount || 0), 0);
 
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
-      doc.text(`Daily Revenue: $${dayRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 45);
-      doc.text(`Daily Net Profit: $${dayProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
-      doc.text(`Transaction Count: ${transactions.length}`, 15, 59);
+      doc.text(`Daily Revenue (Net): $${dayRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 45);
+      if (dayDiscounts > 0) {
+        doc.text(`Total Discounts Applied: -$${dayDiscounts.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
+        doc.text(`Daily Net Profit: $${dayProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 59);
+        doc.text(`Transaction Count: ${transactions.length}`, 15, 66);
+      } else {
+        doc.text(`Daily Net Profit: $${dayProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
+        doc.text(`Transaction Count: ${transactions.length}`, 15, 59);
+      }
 
       const tableBody = transactions.flatMap(t => 
         t.items.map((item: LedgerEntry) => [
@@ -337,12 +361,19 @@ export default function Sales() {
       
       const totalRev = periodReportData.revenue;
       const totalProf = periodReportData.profit;
+      const totalDiscounts = periodReportData.discounts || 0;
 
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
-      doc.text(`Total Revenue: $${totalRev.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 45);
-      doc.text(`Total Net Profit: $${totalProf.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
-      doc.text(`Transaction / Item Count: ${matchedSales.length}`, 15, 59);
+      doc.text(`Total Revenue (Net): $${totalRev.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 45);
+      if (totalDiscounts > 0) {
+        doc.text(`Total Discounts Applied: -$${totalDiscounts.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
+        doc.text(`Total Net Profit: $${totalProf.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 59);
+        doc.text(`Transaction Count: ${periodReportData.count} (${matchedSales.length} items)`, 15, 66);
+      } else {
+        doc.text(`Total Net Profit: $${totalProf.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
+        doc.text(`Transaction Count: ${periodReportData.count} (${matchedSales.length} items)`, 15, 59);
+      }
 
       const tableBody = matchedSales.map((item: LedgerEntry) => {
         const itemDate = new Date(item.created_at);
@@ -399,72 +430,131 @@ export default function Sales() {
     return Array.from(years).sort((a, b) => b - a);
   }, [sales]);
 
+  const discountMap = useMemo(() => {
+    const map: Record<string, { id: string; amount: number; description: string }> = {};
+    discounts.forEach(d => {
+      const amt = safeNum(d.amount);
+      if (d.created_at) {
+        if (!map[d.created_at]) {
+          map[d.created_at] = { id: d.id, amount: amt, description: d.description || '' };
+        } else {
+          map[d.created_at].amount += amt;
+        }
+      }
+      const refMatch = d.description?.match(/Sale Ref:\s*([a-f0-9\-]+)/i);
+      if (refMatch && refMatch[1]) {
+        map[`ref_${refMatch[1]}`] = { id: d.id, amount: amt, description: d.description || '' };
+      }
+    });
+    return map;
+  }, [discounts]);
+
   const periodReportData = useMemo(() => {
-    const matchedSales = sales.filter(sale => {
-      if (!sale.created_at) return false;
-      const saleDate = new Date(sale.created_at);
-      
+    const matchedTransactions: {
+      timestamp: string;
+      items: LedgerEntry[];
+      grossAmount: number;
+      discountAmount: number;
+      netAmount: number;
+      profit: number;
+    }[] = [];
+
+    // Group all sales by timestamp first
+    const txMap: Record<string, LedgerEntry[]> = {};
+    sales.forEach(sale => {
+      if (!sale.created_at) return;
+      if (!txMap[sale.created_at]) txMap[sale.created_at] = [];
+      txMap[sale.created_at].push(sale);
+    });
+
+    Object.entries(txMap).forEach(([timestamp, items]) => {
+      const saleDate = new Date(timestamp);
+      let isMatch = false;
+
       if (reportPeriod === 'daily') {
         const targetDate = new Date(selectedDate);
-        return saleDate.getFullYear() === targetDate.getFullYear() &&
-               saleDate.getMonth() === targetDate.getMonth() &&
-               saleDate.getDate() === targetDate.getDate();
+        isMatch = saleDate.getFullYear() === targetDate.getFullYear() &&
+                  saleDate.getMonth() === targetDate.getMonth() &&
+                  saleDate.getDate() === targetDate.getDate();
       } else if (reportPeriod === 'monthly') {
         const [yearStr, monthStr] = selectedMonth.split('-');
         const targetYear = parseInt(yearStr) || new Date().getFullYear();
         const targetMonth = (parseInt(monthStr) || 1) - 1;
-        return saleDate.getFullYear() === targetYear &&
-               saleDate.getMonth() === targetMonth;
+        isMatch = saleDate.getFullYear() === targetYear &&
+                  saleDate.getMonth() === targetMonth;
       } else if (reportPeriod === 'semi-annual') {
         const isYearMatch = saleDate.getFullYear() === selectedSemiYear;
         const isHalfMatch = selectedHalf === 'H1' 
           ? saleDate.getMonth() < 6 
           : saleDate.getMonth() >= 6;
-        return isYearMatch && isHalfMatch;
+        isMatch = isYearMatch && isHalfMatch;
       } else {
-        return saleDate.getFullYear() === selectedAnnualYear;
+        isMatch = saleDate.getFullYear() === selectedAnnualYear;
+      }
+
+      if (isMatch) {
+        let saleRef: string | undefined;
+        for (const item of items) {
+          const match = item.description?.match(/Sale Ref:\s*([a-f0-9\-]+)/i);
+          if (match && match[1]) {
+            saleRef = match[1];
+            break;
+          }
+        }
+
+        const discountInfo = discountMap[timestamp] || (saleRef ? discountMap[`ref_${saleRef}`] : null);
+        const discountAmount = discountInfo ? safeNum(discountInfo.amount) : 0;
+        const grossAmount = items.reduce((sum, item) => sum + safeNum(item.amount), 0);
+        const netAmount = Math.max(0, grossAmount - discountAmount);
+        const cogs = items.reduce((sum, item) => sum + (safeNum(item.inventory?.cost_price) * (safeNum(item.quantity) || 1)), 0);
+        const profit = netAmount - cogs;
+
+        matchedTransactions.push({
+          timestamp,
+          items,
+          grossAmount,
+          discountAmount,
+          netAmount,
+          profit
+        });
       }
     });
 
-    const revenue = matchedSales.reduce((acc, sale) => acc + safeNum(sale.amount), 0);
-    const profit = matchedSales.reduce((acc, sale) => {
-      const amount = safeNum(sale.amount);
-      const costPerUnit = safeNum(sale.inventory?.cost_price);
-      const quantity = safeNum(sale.quantity) || 1;
-      const totalCost = costPerUnit * quantity;
-      return acc + (amount - totalCost);
-    }, 0);
+    const revenue = matchedTransactions.reduce((acc, t) => acc + t.netAmount, 0);
+    const profit = matchedTransactions.reduce((acc, t) => acc + t.profit, 0);
+    const totalDiscounts = matchedTransactions.reduce((acc, t) => acc + t.discountAmount, 0);
+    const matchedSales = matchedTransactions.flatMap(t => t.items);
 
     return {
       revenue,
       profit,
-      count: matchedSales.length,
+      discounts: totalDiscounts,
+      count: matchedTransactions.length,
       matchedSales
     };
-  }, [sales, reportPeriod, selectedDate, selectedMonth, selectedSemiYear, selectedHalf, selectedAnnualYear]);
+  }, [sales, discountMap, reportPeriod, selectedDate, selectedMonth, selectedSemiYear, selectedHalf, selectedAnnualYear]);
 
   const filteredSales = sales.filter(sale => 
     (sale.inventory?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (sale.fund_source || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const totalProfit = useMemo(() => {
-    return filteredSales.reduce((acc, sale) => {
-      const amount = safeNum(sale.amount);
-      const costPerUnit = safeNum(sale.inventory?.cost_price);
-      const quantity = safeNum(sale.quantity) || 1;
-      const totalCost = costPerUnit * quantity;
-      return acc + (amount - totalCost);
-    }, 0);
-  }, [filteredSales]);
-
   // Grouping logic
   const groupedSales = useMemo(() => {
     const groups: { 
-      date: string, 
-      revenue: number, 
-      profit: number,
-      transactions: { timestamp: string, items: LedgerEntry[] }[] 
+      date: string; 
+      revenue: number; 
+      profit: number;
+      discounts: number;
+      transactions: { 
+        timestamp: string; 
+        items: LedgerEntry[];
+        grossAmount: number;
+        discountAmount: number;
+        netAmount: number;
+        profit: number;
+        discountEntryId?: string;
+      }[]; 
     }[] = [];
     
     // Sort sales by date descending
@@ -472,37 +562,75 @@ export default function Sales() {
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
+    const txMap: Record<string, LedgerEntry[]> = {};
     sortedSales.forEach(sale => {
-      const dateStr = new Date(sale.created_at).toLocaleDateString(undefined, { 
+      const ts = sale.created_at;
+      if (!txMap[ts]) {
+        txMap[ts] = [];
+      }
+      txMap[ts].push(sale);
+    });
+
+    Object.entries(txMap).forEach(([timestamp, items]) => {
+      const dateStr = new Date(timestamp).toLocaleDateString(undefined, { 
         year: 'numeric', 
         month: 'long', 
         day: 'numeric' 
       });
-      const timestamp = sale.created_at;
 
       let dateGroup = groups.find(g => g.date === dateStr);
       if (!dateGroup) {
-        dateGroup = { date: dateStr, revenue: 0, profit: 0, transactions: [] };
+        dateGroup = { date: dateStr, revenue: 0, profit: 0, discounts: 0, transactions: [] };
         groups.push(dateGroup);
       }
 
-      // Add to daily totals
-      const amount = safeNum(sale.amount);
-      const cost = safeNum(sale.inventory?.cost_price) * (safeNum(sale.quantity) || 1);
-      dateGroup.revenue += amount;
-      dateGroup.profit += (amount - cost);
-
-      let transaction = dateGroup.transactions.find(t => t.timestamp === timestamp);
-      if (!transaction) {
-        transaction = { timestamp, items: [] };
-        dateGroup.transactions.push(transaction);
+      let saleRef: string | undefined;
+      for (const item of items) {
+        const match = item.description?.match(/Sale Ref:\s*([a-f0-9\-]+)/i);
+        if (match && match[1]) {
+          saleRef = match[1];
+          break;
+        }
       }
 
-      transaction.items.push(sale);
+      const discountInfo = discountMap[timestamp] || (saleRef ? discountMap[`ref_${saleRef}`] : null);
+      const discountAmount = discountInfo ? safeNum(discountInfo.amount) : 0;
+      const discountEntryId = discountInfo?.id;
+
+      const grossAmount = items.reduce((sum, item) => sum + safeNum(item.amount), 0);
+      const netAmount = Math.max(0, grossAmount - discountAmount);
+      const cogs = items.reduce((sum, item) => sum + (safeNum(item.inventory?.cost_price) * (safeNum(item.quantity) || 1)), 0);
+      const txProfit = netAmount - cogs;
+
+      dateGroup.revenue += netAmount;
+      dateGroup.profit += txProfit;
+      dateGroup.discounts += discountAmount;
+
+      dateGroup.transactions.push({
+        timestamp,
+        items,
+        grossAmount,
+        discountAmount,
+        netAmount,
+        profit: txProfit,
+        discountEntryId
+      });
     });
 
     return groups;
-  }, [filteredSales]);
+  }, [filteredSales, discountMap]);
+
+  const totalProfit = useMemo(() => {
+    return groupedSales.reduce((sum, g) => sum + g.profit, 0);
+  }, [groupedSales]);
+
+  const totalNetRevenue = useMemo(() => {
+    return groupedSales.reduce((sum, g) => sum + g.revenue, 0);
+  }, [groupedSales]);
+
+  const totalTransactionCount = useMemo(() => {
+    return groupedSales.reduce((sum, g) => sum + g.transactions.length, 0);
+  }, [groupedSales]);
 
   if (loading && sales.length === 0) {
     return <Loading />;
@@ -695,9 +823,9 @@ export default function Sales() {
         <div className="bg-[#050505] border border-white/5 rounded-3xl p-8 flex items-center justify-between shadow-2xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD700]/5 blur-[60px] rounded-full" />
           <div className="relative z-10">
-            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Total Sales Revenue</p>
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Total Sales Revenue (Net)</p>
             <h2 className="text-4xl font-black mt-2 text-white group-hover:gold-text transition-all">
-              ${sales.reduce((acc, s) => acc + (s?.amount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              ${totalNetRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h2>
             <p className="text-[10px] text-slate-600 mt-2 font-mono uppercase tracking-tighter">Vault Liquidity</p>
           </div>
@@ -707,8 +835,9 @@ export default function Sales() {
           <div>
             <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Transaction Count</p>
             <h2 className="text-4xl font-black mt-2 text-white group-hover:gold-text transition-all">
-              {sales.length}
+              {totalTransactionCount}
             </h2>
+            <p className="text-[10px] text-slate-600 mt-2 font-mono uppercase tracking-tighter">{sales.length} items archived</p>
           </div>
           <History size={48} className="text-white/10 group-hover:text-[#FFD700]/20 transition-colors" />
         </div>
@@ -787,7 +916,9 @@ export default function Sales() {
 
                 <div className="flex items-center gap-6">
                   <div className="text-right px-6 border-r border-white/10 hidden sm:block">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Daily Revenue</p>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                      {dateGroup.discounts > 0 ? 'Daily Revenue (Net)' : 'Daily Revenue'}
+                    </p>
                     <p className="text-xl font-black text-[#FFD700]">${dateGroup.revenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                   </div>
                   <div className="text-right px-6 border-r border-white/10 hidden sm:block">
@@ -812,18 +943,20 @@ export default function Sales() {
               {/* Mobile Totals View */}
               <div className="grid grid-cols-2 gap-4 sm:hidden px-4">
                 <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Revenue</p>
-                  <p className="text-lg font-black text-[#FFD700]">${dateGroup.revenue.toLocaleString()}</p>
+                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Revenue (Net)</p>
+                  <p className="text-lg font-black text-[#FFD700]">${dateGroup.revenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
                   <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Profit</p>
-                  <p className="text-lg font-black text-blue-400">${dateGroup.profit.toLocaleString()}</p>
+                  <p className="text-lg font-black text-blue-400">${dateGroup.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4">
                 {dateGroup.transactions.map((transaction) => {
-                  const totalAmount = transaction.items.reduce((sum, item) => sum + (item.amount || 0), 0);
+                  const grossAmount = transaction.grossAmount;
+                  const discountAmount = transaction.discountAmount;
+                  const netAmount = transaction.netAmount;
                   const firstItem = transaction.items[0];
                   const isReversing = reversingTransactionId === firstItem.id;
 
@@ -836,13 +969,19 @@ export default function Sales() {
                             <ShoppingCart size={20} />
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-black text-white uppercase tracking-tighter">
                                 Sale @ {new Date(transaction.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                               </span>
                               <span className="text-[10px] font-black uppercase tracking-widest text-[#FFD700] bg-[#FFD700]/10 border border-[#FFD700]/20 px-2 py-0.5 rounded-full">
                                 {firstItem.fund_source}
                               </span>
+                              {discountAmount > 0 && (
+                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <Tag size={10} />
+                                  Discount -${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </span>
+                              )}
                             </div>
                             <p className="text-[10px] text-slate-600 font-mono mt-0.5">ID: {transaction.timestamp.split('-').pop()}</p>
                           </div>
@@ -850,12 +989,23 @@ export default function Sales() {
                         
                         <div className="flex items-center gap-6">
                           <div className="text-right">
-                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Total Amount</p>
-                            <p className="text-xl font-black text-[#FFD700]">${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                              {discountAmount > 0 ? 'Net Total' : 'Total Amount'}
+                            </p>
+                            <div className="flex items-baseline gap-2 justify-end">
+                              {discountAmount > 0 && (
+                                <span className="text-xs text-slate-500 line-through font-mono">
+                                  ${grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </span>
+                              )}
+                              <p className="text-xl font-black text-[#FFD700]">
+                                ${netAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </p>
+                            </div>
                           </div>
                           <button 
                             disabled={isReversing}
-                            onClick={() => handleReverseTransaction(transaction.items)}
+                            onClick={() => handleReverseTransaction(transaction.items, transaction.discountEntryId)}
                             className={cn(
                               "p-2.5 rounded-xl transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-tighter",
                               isReversing 
@@ -947,6 +1097,21 @@ export default function Sales() {
                           </div>
                         ))}
                       </div>
+
+                      {/* Transaction Footer (if discounted) */}
+                      {discountAmount > 0 && (
+                        <div className="bg-[#0c0c0c] px-6 py-2.5 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2 text-emerald-400 font-semibold text-[11px] uppercase tracking-wider">
+                            <Tag size={12} />
+                            <span>Discount Applied: -${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-slate-400 font-mono text-[11px]">
+                            <span>Gross Total: ${grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            <span>•</span>
+                            <span className="text-[#FFD700] font-bold">Net Final: ${netAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
