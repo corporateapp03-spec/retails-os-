@@ -16,7 +16,14 @@ import {
   ShoppingCart,
   Loader2,
   Download,
-  Tag
+  Tag,
+  TrendingUp,
+  TrendingDown,
+  ArrowUpRight,
+  ArrowDownRight,
+  Percent,
+  Sparkles,
+  BarChart3
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Loading from '../components/Loading';
@@ -35,7 +42,7 @@ export default function Sales() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<number>(0);
   const [downloadingDate, setDownloadingDate] = useState<string | null>(null);
-  const [reportPeriod, setReportPeriod] = useState<'daily' | 'monthly' | 'semi-annual' | 'annual'>('daily');
+  const [reportPeriod, setReportPeriod] = useState<'daily' | 'monthly' | 'semi-annual' | 'annual' | 'all-time'>('daily');
   const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const d = new Date();
@@ -228,6 +235,419 @@ export default function Sales() {
     }
   }
 
+  const safeNum = (val: any) => {
+    const n = parseFloat(val);
+    return isNaN(n) ? 0 : n;
+  };
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([new Date().getFullYear()]);
+    sales.forEach(sale => {
+      if (sale.created_at) {
+        const y = new Date(sale.created_at).getFullYear();
+        if (!isNaN(y)) {
+          years.add(y);
+        }
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [sales]);
+
+  const discountMap = useMemo(() => {
+    const map: Record<string, { id: string; amount: number; description: string }> = {};
+    discounts.forEach(d => {
+      const amt = safeNum(d.amount);
+      if (d.created_at) {
+        if (!map[d.created_at]) {
+          map[d.created_at] = { id: d.id, amount: amt, description: d.description || '' };
+        } else {
+          map[d.created_at].amount += amt;
+        }
+      }
+      const refMatch = d.description?.match(/Sale Ref:\s*([a-f0-9\-]+)/i);
+      if (refMatch && refMatch[1]) {
+        map[`ref_${refMatch[1]}`] = { id: d.id, amount: amt, description: d.description || '' };
+      }
+    });
+    return map;
+  }, [discounts]);
+
+  // Complete unfiltered calculations across all sales and Inception-to-Date growth trajectory
+  const allTimeMetrics = useMemo(() => {
+    const txMap: Record<string, LedgerEntry[]> = {};
+    sales.forEach(sale => {
+      if (!sale.created_at) return;
+      if (!txMap[sale.created_at]) txMap[sale.created_at] = [];
+      txMap[sale.created_at].push(sale);
+    });
+
+    const allTransactions: {
+      timestamp: string;
+      items: LedgerEntry[];
+      grossAmount: number;
+      discountAmount: number;
+      netAmount: number;
+      cogs: number;
+      profit: number;
+    }[] = [];
+
+    // Sort chronologically ascending (earliest to latest)
+    const sortedTimestamps = Object.keys(txMap).sort(
+      (a, b) => new Date(a).getTime() - new Date(b).getTime()
+    );
+
+    let totalGross = 0;
+    let totalDiscounts = 0;
+    let totalNetRevenue = 0;
+    let totalCogs = 0;
+    let totalProfit = 0;
+
+    sortedTimestamps.forEach(timestamp => {
+      const items = txMap[timestamp];
+      let saleRef: string | undefined;
+      for (const item of items) {
+        const match = item.description?.match(/Sale Ref:\s*([a-f0-9\-]+)/i);
+        if (match && match[1]) {
+          saleRef = match[1];
+          break;
+        }
+      }
+
+      const discountInfo = discountMap[timestamp] || (saleRef ? discountMap[`ref_${saleRef}`] : null);
+      const discountAmount = discountInfo ? safeNum(discountInfo.amount) : 0;
+      const grossAmount = items.reduce((sum, item) => sum + safeNum(item.amount), 0);
+      const netAmount = Math.max(0, grossAmount - discountAmount);
+      const cogs = items.reduce((sum, item) => sum + (safeNum(item.inventory?.cost_price) * (safeNum(item.quantity) || 1)), 0);
+      const profit = netAmount - cogs;
+
+      totalGross += grossAmount;
+      totalDiscounts += discountAmount;
+      totalNetRevenue += netAmount;
+      totalCogs += cogs;
+      totalProfit += profit;
+
+      allTransactions.push({
+        timestamp,
+        items,
+        grossAmount,
+        discountAmount,
+        netAmount,
+        cogs,
+        profit
+      });
+    });
+
+    // Group chronologically by calendar day to determine where we started vs where we are
+    const dayMap: Record<string, { date: string; revenue: number; profit: number; gross: number; count: number; rawDate: Date }> = {};
+    allTransactions.forEach(tx => {
+      const d = new Date(tx.timestamp);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (!dayMap[key]) {
+        dayMap[key] = {
+          date: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+          revenue: 0,
+          profit: 0,
+          gross: 0,
+          count: 0,
+          rawDate: d
+        };
+      }
+      dayMap[key].revenue += tx.netAmount;
+      dayMap[key].profit += tx.profit;
+      dayMap[key].gross += tx.grossAmount;
+      dayMap[key].count += 1;
+    });
+
+    const activeDaysChronological = Object.keys(dayMap)
+      .sort()
+      .map(k => dayMap[k]);
+
+    let startPeriodLabel = 'Inception';
+    let currentPeriodLabel = 'Current';
+    let startRevenue = 0;
+    let startProfit = 0;
+    let currentRevenue = 0;
+    let currentProfit = 0;
+    let revenueGrowthPercent = 0;
+    let profitGrowthPercent = 0;
+
+    if (activeDaysChronological.length >= 2) {
+      const firstDay = activeDaysChronological[0];
+      const latestDay = activeDaysChronological[activeDaysChronological.length - 1];
+
+      startPeriodLabel = firstDay.date;
+      currentPeriodLabel = latestDay.date;
+      startRevenue = firstDay.revenue;
+      startProfit = firstDay.profit;
+      currentRevenue = latestDay.revenue;
+      currentProfit = latestDay.profit;
+
+      if (startRevenue > 0) {
+        revenueGrowthPercent = ((currentRevenue - startRevenue) / startRevenue) * 100;
+      } else if (currentRevenue > 0) {
+        revenueGrowthPercent = 100;
+      }
+
+      if (startProfit !== 0) {
+        profitGrowthPercent = ((currentProfit - startProfit) / Math.abs(startProfit)) * 100;
+      } else if (currentProfit > 0) {
+        profitGrowthPercent = 100;
+      }
+    } else if (allTransactions.length >= 2) {
+      // Transactions on single day, compare initial transaction to latest transaction
+      const firstTx = allTransactions[0];
+      const latestTx = allTransactions[allTransactions.length - 1];
+
+      startPeriodLabel = `First Sale (${new Date(firstTx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`;
+      currentPeriodLabel = `Latest Sale (${new Date(latestTx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`;
+      startRevenue = firstTx.netAmount;
+      startProfit = firstTx.profit;
+      currentRevenue = latestTx.netAmount;
+      currentProfit = latestTx.profit;
+
+      if (startRevenue > 0) {
+        revenueGrowthPercent = ((currentRevenue - startRevenue) / startRevenue) * 100;
+      } else if (currentRevenue > 0) {
+        revenueGrowthPercent = 100;
+      }
+
+      if (startProfit !== 0) {
+        profitGrowthPercent = ((currentProfit - startProfit) / Math.abs(startProfit)) * 100;
+      } else if (currentProfit > 0) {
+        profitGrowthPercent = 100;
+      }
+    } else if (allTransactions.length === 1) {
+      const singleTx = allTransactions[0];
+      startPeriodLabel = 'First Sale';
+      currentPeriodLabel = 'Baseline Record';
+      startRevenue = singleTx.netAmount;
+      startProfit = singleTx.profit;
+      currentRevenue = singleTx.netAmount;
+      currentProfit = singleTx.profit;
+      revenueGrowthPercent = 0;
+      profitGrowthPercent = 0;
+    }
+
+    const totalGrossProfit = totalGross - totalCogs;
+    const grossMarginPercent = totalGross > 0 ? (totalGrossProfit / totalGross) * 100 : 0;
+
+    return {
+      totalProfit,
+      totalGrossProfit,
+      grossMarginPercent,
+      totalNetRevenue,
+      totalGross,
+      totalDiscounts,
+      totalCogs,
+      totalTransactions: allTransactions.length,
+      totalItems: sales.length,
+      allTransactions,
+      activeDaysCount: activeDaysChronological.length,
+      startPeriodLabel,
+      currentPeriodLabel,
+      startRevenue,
+      startProfit,
+      currentRevenue,
+      currentProfit,
+      revenueGrowthPercent,
+      profitGrowthPercent,
+      txMap
+    };
+  }, [sales, discountMap]);
+
+  // Periodic Audit Data computation including profit, revenue, and period growth
+  const periodReportData = useMemo(() => {
+    if (reportPeriod === 'all-time') {
+      return {
+        revenue: allTimeMetrics.totalNetRevenue,
+        gross: allTimeMetrics.totalGross,
+        cogs: allTimeMetrics.totalCogs,
+        grossProfit: allTimeMetrics.totalGrossProfit,
+        grossMarginPercent: allTimeMetrics.grossMarginPercent,
+        profit: allTimeMetrics.totalProfit,
+        discounts: allTimeMetrics.totalDiscounts,
+        count: allTimeMetrics.totalTransactions,
+        growth: allTimeMetrics.revenueGrowthPercent,
+        profitGrowth: allTimeMetrics.profitGrowthPercent,
+        hasPrior: allTimeMetrics.allTransactions.length > 1,
+        priorLabel: `vs Start (${allTimeMetrics.startPeriodLabel})`,
+        periodLabelShort: 'All-Time',
+        matchedSales: sales
+      };
+    }
+
+    const matchedTransactions = allTimeMetrics.allTransactions.filter(tx => {
+      const saleDate = new Date(tx.timestamp);
+      if (reportPeriod === 'daily') {
+        const targetDate = new Date(selectedDate);
+        return saleDate.getFullYear() === targetDate.getFullYear() &&
+               saleDate.getMonth() === targetDate.getMonth() &&
+               saleDate.getDate() === targetDate.getDate();
+      }
+      if (reportPeriod === 'monthly') {
+        const [yearStr, monthStr] = selectedMonth.split('-');
+        const targetYear = parseInt(yearStr) || new Date().getFullYear();
+        const targetMonth = (parseInt(monthStr) || 1) - 1;
+        return saleDate.getFullYear() === targetYear &&
+               saleDate.getMonth() === targetMonth;
+      }
+      if (reportPeriod === 'semi-annual') {
+        const isYearMatch = saleDate.getFullYear() === selectedSemiYear;
+        const isHalfMatch = selectedHalf === 'H1' 
+          ? saleDate.getMonth() < 6 
+          : saleDate.getMonth() >= 6;
+        return isYearMatch && isHalfMatch;
+      }
+      if (reportPeriod === 'annual') {
+        return saleDate.getFullYear() === selectedAnnualYear;
+      }
+      return true;
+    });
+
+    const revenue = matchedTransactions.reduce((acc, t) => acc + t.netAmount, 0);
+    const gross = matchedTransactions.reduce((acc, t) => acc + t.grossAmount, 0);
+    const cogs = matchedTransactions.reduce((acc, t) => acc + t.cogs, 0);
+    const grossProfit = gross - cogs;
+    const grossMarginPercent = gross > 0 ? (grossProfit / gross) * 100 : 0;
+    const profit = matchedTransactions.reduce((acc, t) => acc + t.profit, 0);
+    const totalDiscounts = matchedTransactions.reduce((acc, t) => acc + t.discountAmount, 0);
+    const matchedSales = matchedTransactions.flatMap(t => t.items);
+
+    // Compute prior period for growth calculation
+    let priorRevenue = 0;
+    let priorProfit = 0;
+    let hasPrior = false;
+    let priorLabel = 'vs Prior';
+    let periodLabelShort = 'Selected';
+
+    if (reportPeriod === 'daily') {
+      periodLabelShort = 'Day';
+      const targetDate = new Date(selectedDate);
+      const priorDate = new Date(targetDate);
+      priorDate.setDate(priorDate.getDate() - 1);
+      const priorDateStr = `${priorDate.getFullYear()}-${String(priorDate.getMonth() + 1).padStart(2, '0')}-${String(priorDate.getDate()).padStart(2, '0')}`;
+      priorLabel = 'vs Prior Day';
+
+      const priorTxs = allTimeMetrics.allTransactions.filter(tx => {
+        const d = new Date(tx.timestamp);
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return k === priorDateStr;
+      });
+
+      if (priorTxs.length > 0) {
+        hasPrior = true;
+        priorRevenue = priorTxs.reduce((s, t) => s + t.netAmount, 0);
+        priorProfit = priorTxs.reduce((s, t) => s + t.profit, 0);
+      } else {
+        // If direct calendar prior day has no sales, check preceding active sales day in archive
+        const earlierTxs = allTimeMetrics.allTransactions.filter(tx => {
+          const d = new Date(tx.timestamp);
+          return d.getFullYear() < targetDate.getFullYear() ||
+            (d.getFullYear() === targetDate.getFullYear() && d.getMonth() < targetDate.getMonth()) ||
+            (d.getFullYear() === targetDate.getFullYear() && d.getMonth() === targetDate.getMonth() && d.getDate() < targetDate.getDate());
+        });
+
+        if (earlierTxs.length > 0) {
+          const lastEarlier = earlierTxs[earlierTxs.length - 1];
+          const prevDate = new Date(lastEarlier.timestamp);
+          const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+          priorLabel = `vs Prev (${prevDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`;
+          const prevDayTxs = earlierTxs.filter(tx => {
+            const d = new Date(tx.timestamp);
+            const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            return k === prevKey;
+          });
+          hasPrior = true;
+          priorRevenue = prevDayTxs.reduce((s, t) => s + t.netAmount, 0);
+          priorProfit = prevDayTxs.reduce((s, t) => s + t.profit, 0);
+        }
+      }
+    } else if (reportPeriod === 'monthly') {
+      periodLabelShort = 'Month';
+      priorLabel = 'vs Prior Month';
+      const [yearStr, monthStr] = selectedMonth.split('-');
+      const y = parseInt(yearStr) || new Date().getFullYear();
+      const m = parseInt(monthStr) || 1;
+      const priorY = m === 1 ? y - 1 : y;
+      const priorM = m === 1 ? 12 : m - 1;
+
+      const priorTxs = allTimeMetrics.allTransactions.filter(tx => {
+        const d = new Date(tx.timestamp);
+        return d.getFullYear() === priorY && d.getMonth() === priorM - 1;
+      });
+      if (priorTxs.length > 0) {
+        hasPrior = true;
+        priorRevenue = priorTxs.reduce((s, t) => s + t.netAmount, 0);
+        priorProfit = priorTxs.reduce((s, t) => s + t.profit, 0);
+      }
+    } else if (reportPeriod === 'semi-annual') {
+      periodLabelShort = selectedHalf;
+      priorLabel = 'vs Prior Half';
+      const priorSemiYear = selectedHalf === 'H1' ? selectedSemiYear - 1 : selectedSemiYear;
+      const priorHalf = selectedHalf === 'H1' ? 'H2' : 'H1';
+
+      const priorTxs = allTimeMetrics.allTransactions.filter(tx => {
+        const d = new Date(tx.timestamp);
+        const isYear = d.getFullYear() === priorSemiYear;
+        const isHalf = priorHalf === 'H1' ? d.getMonth() < 6 : d.getMonth() >= 6;
+        return isYear && isHalf;
+      });
+      if (priorTxs.length > 0) {
+        hasPrior = true;
+        priorRevenue = priorTxs.reduce((s, t) => s + t.netAmount, 0);
+        priorProfit = priorTxs.reduce((s, t) => s + t.profit, 0);
+      }
+    } else {
+      periodLabelShort = `${selectedAnnualYear}`;
+      priorLabel = 'vs Prior Year';
+      const priorYear = selectedAnnualYear - 1;
+
+      const priorTxs = allTimeMetrics.allTransactions.filter(tx => {
+        const d = new Date(tx.timestamp);
+        return d.getFullYear() === priorYear;
+      });
+      if (priorTxs.length > 0) {
+        hasPrior = true;
+        priorRevenue = priorTxs.reduce((s, t) => s + t.netAmount, 0);
+        priorProfit = priorTxs.reduce((s, t) => s + t.profit, 0);
+      }
+    }
+
+    let growth = 0;
+    let profitGrowth = 0;
+
+    if (hasPrior && priorRevenue > 0) {
+      growth = ((revenue - priorRevenue) / priorRevenue) * 100;
+    } else if (hasPrior && revenue > 0) {
+      growth = 100;
+    }
+
+    if (hasPrior && priorProfit !== 0) {
+      profitGrowth = ((profit - priorProfit) / Math.abs(priorProfit)) * 100;
+    } else if (hasPrior && profit > 0) {
+      profitGrowth = 100;
+    }
+
+    return {
+      revenue,
+      gross,
+      cogs,
+      grossProfit,
+      grossMarginPercent,
+      profit,
+      discounts: totalDiscounts,
+      count: matchedTransactions.length,
+      growth,
+      profitGrowth,
+      hasPrior,
+      priorRevenue,
+      priorProfit,
+      priorLabel,
+      periodLabelShort,
+      matchedSales
+    };
+  }, [sales, allTimeMetrics, reportPeriod, selectedDate, selectedMonth, selectedSemiYear, selectedHalf, selectedAnnualYear]);
+
   const downloadDayReport = (dateStr: string, transactions: any[]) => {
     setDownloadingDate(dateStr);
     try {
@@ -246,43 +666,70 @@ export default function Sales() {
       doc.setFontSize(12);
       doc.text(`Report Period: ${dateStr}`, 15, 35);
       
-      // Calculate day totals with discounts deducted
+      const dayGross = transactions.reduce((acc, t) => acc + (t.grossAmount !== undefined ? t.grossAmount : t.items.reduce((s: number, i: any) => s + safeNum(i.amount), 0)), 0);
+      const dayCogs = transactions.reduce((acc, t) => acc + (t.cogs !== undefined ? t.cogs : t.items.reduce((s: number, i: any) => s + (safeNum(i.inventory?.cost_price) * (safeNum(i.quantity) || 1)), 0)), 0);
+      const dayGrossProfit = dayGross - dayCogs;
       const dayRevenue = transactions.reduce((acc, t) => acc + (t.netAmount !== undefined ? t.netAmount : t.items.reduce((s: number, i: any) => s + safeNum(i.amount), 0)), 0);
       const dayProfit = transactions.reduce((acc, t) => acc + (t.profit !== undefined ? t.profit : 0), 0);
       const dayDiscounts = transactions.reduce((acc, t) => acc + (t.discountAmount || 0), 0);
 
+      // Check for day-over-day growth against earlier active days in archive
+      let dayGrowthText = '';
+      if (allTimeMetrics.activeDaysCount > 1) {
+        const otherDayTxs = allTimeMetrics.allTransactions.filter(t => 
+          new Date(t.timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) !== dateStr
+        );
+        if (otherDayTxs.length > 0) {
+          const prevDayDateStr = new Date(otherDayTxs[otherDayTxs.length - 1].timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+          const prevDayTxs = otherDayTxs.filter(t =>
+            new Date(t.timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) === prevDayDateStr
+          );
+          const prevDayRev = prevDayTxs.reduce((s, t) => s + t.netAmount, 0);
+          if (prevDayRev > 0) {
+            const g = ((dayRevenue - prevDayRev) / prevDayRev) * 100;
+            dayGrowthText = `Day Growth vs Previous Day (${prevDayDateStr}): ${g >= 0 ? '+' : ''}${g.toFixed(1)}%`;
+          }
+        }
+      }
+
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
       doc.text(`Daily Revenue (Net): $${dayRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 45);
+      doc.text(`Daily Gross Profit: $${dayGrossProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })} (COGS: $${dayCogs.toLocaleString(undefined, { minimumFractionDigits: 2 })})`, 15, 52);
+      let curY = 59;
       if (dayDiscounts > 0) {
-        doc.text(`Total Discounts Applied: -$${dayDiscounts.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
-        doc.text(`Daily Net Profit: $${dayProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 59);
-        doc.text(`Transaction Count: ${transactions.length}`, 15, 66);
-      } else {
-        doc.text(`Daily Net Profit: $${dayProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
-        doc.text(`Transaction Count: ${transactions.length}`, 15, 59);
+        doc.text(`Total Discounts Applied: -$${dayDiscounts.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, curY);
+        curY += 7;
       }
+      doc.text(`Daily Net Profit: $${dayProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, curY);
+      curY += 7;
+      if (dayGrowthText) {
+        doc.text(dayGrowthText, 15, curY);
+        curY += 7;
+      }
+      doc.text(`Transaction Count: ${transactions.length}`, 15, curY);
+      curY += 7;
 
       const tableBody = transactions.flatMap(t => 
         t.items.map((item: LedgerEntry) => [
           new Date(t.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
           item.inventory?.name || item.description || 'Unknown',
           item.quantity || 1,
-          `$${safeNum(item.amount).toLocaleString()}`,
-          `$${(safeNum(item.amount) - (safeNum(item.inventory?.cost_price) * (safeNum(item.quantity) || 1))).toLocaleString()}`,
-          item.fund_source
+          `$${safeNum(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          `$${(safeNum(item.amount) - (safeNum(item.inventory?.cost_price) * (safeNum(item.quantity) || 1))).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          item.fund_source || 'Unknown'
         ])
       );
 
       autoTable(doc, {
-        startY: 70,
+        startY: curY + 2,
         head: [['Time', 'Product', 'Qty', 'Amount', 'Profit', 'Source']],
         body: tableBody,
         theme: 'grid',
         headStyles: { fillColor: [30, 30, 30], textColor: [255, 215, 0] },
         bodyStyles: { fillColor: [15, 15, 15], textColor: [255, 255, 255] },
         alternateRowStyles: { fillColor: [25, 25, 25] },
-        margin: { top: 70 }
+        margin: { top: curY + 2 }
       });
 
       doc.setTextColor(100, 100, 100);
@@ -303,7 +750,11 @@ export default function Sales() {
     let periodLabel = '';
     let dateStrForFile = '';
 
-    if (reportPeriod === 'daily') {
+    if (reportPeriod === 'all-time') {
+      periodTitle = 'RETAILOS ALL-TIME SALES & FINANCIAL AUDIT REPORT';
+      periodLabel = `All-Time Inception to Date (${allTimeMetrics.startPeriodLabel} to ${allTimeMetrics.currentPeriodLabel})`;
+      dateStrForFile = 'All_Time_Profit_Revenue_Growth_Audit';
+    } else if (reportPeriod === 'daily') {
       const targetDate = new Date(selectedDate);
       const formatted = targetDate.toLocaleDateString(undefined, { 
         year: 'numeric', 
@@ -360,20 +811,29 @@ export default function Sales() {
       doc.text(`Report Period: ${periodLabel}`, 15, 35);
       
       const totalRev = periodReportData.revenue;
+      const totalGross = periodReportData.gross;
+      const totalCogs = periodReportData.cogs;
+      const grossProf = periodReportData.grossProfit;
       const totalProf = periodReportData.profit;
       const totalDiscounts = periodReportData.discounts || 0;
+      const growthVal = periodReportData.growth;
+      const profitGrowthVal = periodReportData.profitGrowth;
 
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
-      doc.text(`Total Revenue (Net): $${totalRev.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 45);
+      doc.text(`Total Revenue (Net): $${totalRev.toLocaleString(undefined, { minimumFractionDigits: 2 })} (Gross: $${totalGross.toLocaleString(undefined, { minimumFractionDigits: 2 })})`, 15, 45);
+      doc.text(`Gross Profit: $${grossProf.toLocaleString(undefined, { minimumFractionDigits: 2 })} (Margin: ${periodReportData.grossMarginPercent.toFixed(1)}% | COGS: $${totalCogs.toLocaleString(undefined, { minimumFractionDigits: 2 })})`, 15, 52);
+      let curY = 59;
       if (totalDiscounts > 0) {
-        doc.text(`Total Discounts Applied: -$${totalDiscounts.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
-        doc.text(`Total Net Profit: $${totalProf.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 59);
-        doc.text(`Transaction Count: ${periodReportData.count} (${matchedSales.length} items)`, 15, 66);
-      } else {
-        doc.text(`Total Net Profit: $${totalProf.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, 52);
-        doc.text(`Transaction Count: ${periodReportData.count} (${matchedSales.length} items)`, 15, 59);
+        doc.text(`Total Discounts Applied: -$${totalDiscounts.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, curY);
+        curY += 7;
       }
+      doc.text(`Total Net Profit: $${totalProf.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 15, curY);
+      curY += 7;
+      doc.text(`Period Growth (${periodReportData.priorLabel}): ${growthVal >= 0 ? '+' : ''}${growthVal.toFixed(1)}% (Profit Growth: ${profitGrowthVal >= 0 ? '+' : ''}${profitGrowthVal.toFixed(1)}%)`, 15, curY);
+      curY += 7;
+      doc.text(`Transaction Count: ${periodReportData.count} (${matchedSales.length} items recorded)`, 15, curY);
+      curY += 7;
 
       const tableBody = matchedSales.map((item: LedgerEntry) => {
         const itemDate = new Date(item.created_at);
@@ -389,14 +849,14 @@ export default function Sales() {
       });
 
       autoTable(doc, {
-        startY: 70,
+        startY: curY + 2,
         head: [['Date/Time', 'Product', 'Qty', 'Amount', 'Profit', 'Source']],
         body: tableBody,
         theme: 'grid',
         headStyles: { fillColor: [30, 30, 30], textColor: [255, 215, 0] },
         bodyStyles: { fillColor: [15, 15, 15], textColor: [255, 255, 255] },
         alternateRowStyles: { fillColor: [25, 25, 25] },
-        margin: { top: 70 }
+        margin: { top: curY + 2 }
       });
 
       doc.setTextColor(100, 100, 100);
@@ -411,128 +871,6 @@ export default function Sales() {
       setDownloadingDate(null);
     }
   };
-
-  const safeNum = (val: any) => {
-    const n = parseFloat(val);
-    return isNaN(n) ? 0 : n;
-  };
-
-  const availableYears = useMemo(() => {
-    const years = new Set<number>([new Date().getFullYear()]);
-    sales.forEach(sale => {
-      if (sale.created_at) {
-        const y = new Date(sale.created_at).getFullYear();
-        if (!isNaN(y)) {
-          years.add(y);
-        }
-      }
-    });
-    return Array.from(years).sort((a, b) => b - a);
-  }, [sales]);
-
-  const discountMap = useMemo(() => {
-    const map: Record<string, { id: string; amount: number; description: string }> = {};
-    discounts.forEach(d => {
-      const amt = safeNum(d.amount);
-      if (d.created_at) {
-        if (!map[d.created_at]) {
-          map[d.created_at] = { id: d.id, amount: amt, description: d.description || '' };
-        } else {
-          map[d.created_at].amount += amt;
-        }
-      }
-      const refMatch = d.description?.match(/Sale Ref:\s*([a-f0-9\-]+)/i);
-      if (refMatch && refMatch[1]) {
-        map[`ref_${refMatch[1]}`] = { id: d.id, amount: amt, description: d.description || '' };
-      }
-    });
-    return map;
-  }, [discounts]);
-
-  const periodReportData = useMemo(() => {
-    const matchedTransactions: {
-      timestamp: string;
-      items: LedgerEntry[];
-      grossAmount: number;
-      discountAmount: number;
-      netAmount: number;
-      profit: number;
-    }[] = [];
-
-    // Group all sales by timestamp first
-    const txMap: Record<string, LedgerEntry[]> = {};
-    sales.forEach(sale => {
-      if (!sale.created_at) return;
-      if (!txMap[sale.created_at]) txMap[sale.created_at] = [];
-      txMap[sale.created_at].push(sale);
-    });
-
-    Object.entries(txMap).forEach(([timestamp, items]) => {
-      const saleDate = new Date(timestamp);
-      let isMatch = false;
-
-      if (reportPeriod === 'daily') {
-        const targetDate = new Date(selectedDate);
-        isMatch = saleDate.getFullYear() === targetDate.getFullYear() &&
-                  saleDate.getMonth() === targetDate.getMonth() &&
-                  saleDate.getDate() === targetDate.getDate();
-      } else if (reportPeriod === 'monthly') {
-        const [yearStr, monthStr] = selectedMonth.split('-');
-        const targetYear = parseInt(yearStr) || new Date().getFullYear();
-        const targetMonth = (parseInt(monthStr) || 1) - 1;
-        isMatch = saleDate.getFullYear() === targetYear &&
-                  saleDate.getMonth() === targetMonth;
-      } else if (reportPeriod === 'semi-annual') {
-        const isYearMatch = saleDate.getFullYear() === selectedSemiYear;
-        const isHalfMatch = selectedHalf === 'H1' 
-          ? saleDate.getMonth() < 6 
-          : saleDate.getMonth() >= 6;
-        isMatch = isYearMatch && isHalfMatch;
-      } else {
-        isMatch = saleDate.getFullYear() === selectedAnnualYear;
-      }
-
-      if (isMatch) {
-        let saleRef: string | undefined;
-        for (const item of items) {
-          const match = item.description?.match(/Sale Ref:\s*([a-f0-9\-]+)/i);
-          if (match && match[1]) {
-            saleRef = match[1];
-            break;
-          }
-        }
-
-        const discountInfo = discountMap[timestamp] || (saleRef ? discountMap[`ref_${saleRef}`] : null);
-        const discountAmount = discountInfo ? safeNum(discountInfo.amount) : 0;
-        const grossAmount = items.reduce((sum, item) => sum + safeNum(item.amount), 0);
-        const netAmount = Math.max(0, grossAmount - discountAmount);
-        const cogs = items.reduce((sum, item) => sum + (safeNum(item.inventory?.cost_price) * (safeNum(item.quantity) || 1)), 0);
-        const profit = netAmount - cogs;
-
-        matchedTransactions.push({
-          timestamp,
-          items,
-          grossAmount,
-          discountAmount,
-          netAmount,
-          profit
-        });
-      }
-    });
-
-    const revenue = matchedTransactions.reduce((acc, t) => acc + t.netAmount, 0);
-    const profit = matchedTransactions.reduce((acc, t) => acc + t.profit, 0);
-    const totalDiscounts = matchedTransactions.reduce((acc, t) => acc + t.discountAmount, 0);
-    const matchedSales = matchedTransactions.flatMap(t => t.items);
-
-    return {
-      revenue,
-      profit,
-      discounts: totalDiscounts,
-      count: matchedTransactions.length,
-      matchedSales
-    };
-  }, [sales, discountMap, reportPeriod, selectedDate, selectedMonth, selectedSemiYear, selectedHalf, selectedAnnualYear]);
 
   const filteredSales = sales.filter(sale => 
     (sale.inventory?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -638,23 +976,180 @@ export default function Sales() {
 
   return (
     <div className="space-y-6">
-      {/* Total Profit KPI Card - Android Fluid */}
-      <div className="w-full flex flex-wrap gap-6" style={{ boxSizing: 'border-box' }}>
-        <div className="flex-1 min-w-0 max-w-full bg-[#0a0a0a] border-2 border-[#FFD700] rounded-3xl p-8 shadow-[0_0_25px_rgba(255,215,0,0.15)] relative overflow-hidden group transition-all duration-500 hover:shadow-[0_0_35px_rgba(255,215,0,0.25)]">
+      {/* Top KPI Cards: Gross Profit, Net Realized Profit & Growth Trajectory */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 w-full" style={{ boxSizing: 'border-box' }}>
+        {/* Gross Profit Card - Pre-discount profit on inventory cost */}
+        <div className="bg-[#0a0a0a] border-2 border-cyan-500/40 rounded-3xl p-8 shadow-[0_0_25px_rgba(6,182,212,0.12)] relative overflow-hidden group transition-all duration-500 hover:shadow-[0_0_35px_rgba(6,182,212,0.22)] flex flex-col justify-between">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-cyan-500/10 blur-[80px] rounded-full -mr-16 -mt-16 animate-pulse" />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-cyan-500/10 rounded-xl border border-cyan-500/20 text-cyan-400">
+                  <BarChart3 size={22} />
+                </div>
+                <div>
+                  <p className="text-cyan-400 text-xs font-black uppercase tracking-[0.2em]">Gross Profit</p>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Revenue minus Cost of Goods</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-3 py-1 rounded-full">
+                Pre-Discount
+              </span>
+            </div>
+
+            <h2 className="text-4xl sm:text-5xl font-black mt-4 text-cyan-300 tracking-tighter">
+              ${allTimeMetrics.totalGrossProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </h2>
+
+            <div className="mt-4 grid grid-cols-3 gap-2 py-3 px-4 bg-white/5 rounded-2xl border border-white/5 text-xs font-mono">
+              <div>
+                <span className="text-[9px] text-slate-500 uppercase font-sans font-bold block">Gross Sales</span>
+                <span className="text-slate-300 font-bold">${allTimeMetrics.totalGross.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-500 uppercase font-sans font-bold block">COGS</span>
+                <span className="text-rose-400 font-bold">-${allTimeMetrics.totalCogs.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-500 uppercase font-sans font-bold block">Gross Margin</span>
+                <span className="text-cyan-400 font-bold">
+                  {allTimeMetrics.grossMarginPercent.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mt-4">
+              <div className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-ping" />
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                Direct gross margin across all {allTimeMetrics.totalTransactions} sales
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Total Net Realized Profit Card - Sum of profits obtained in all sales (Unfiltered) */}
+        <div className="bg-[#0a0a0a] border-2 border-[#FFD700] rounded-3xl p-8 shadow-[0_0_25px_rgba(255,215,0,0.15)] relative overflow-hidden group transition-all duration-500 hover:shadow-[0_0_35px_rgba(255,215,0,0.25)] flex flex-col justify-between">
           <div className="absolute top-0 right-0 w-48 h-48 bg-[#FFD700]/10 blur-[80px] rounded-full -mr-16 -mt-16 animate-pulse" />
           <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-[#FFD700]/10 rounded-lg">
-                <DollarSign size={20} className="text-[#FFD700]" />
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-[#FFD700]/10 rounded-xl border border-[#FFD700]/20">
+                  <DollarSign size={22} className="text-[#FFD700]" />
+                </div>
+                <div>
+                  <p className="text-[#FFD700] text-xs font-black uppercase tracking-[0.2em]">Net Realized Profit</p>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">All-Time Cumulative • Unfiltered</p>
+                </div>
               </div>
-              <p className="text-[#FFD700] text-xs font-black uppercase tracking-[0.2em]">Total Realized Profit</p>
+              <span className="text-[10px] font-black uppercase tracking-widest text-[#FFD700] bg-[#FFD700]/10 border border-[#FFD700]/20 px-3 py-1 rounded-full">
+                Unfiltered
+              </span>
             </div>
-            <h2 className="text-5xl font-black mt-2 text-white tracking-tighter">
-              ${totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            
+            <h2 className="text-4xl sm:text-5xl font-black mt-4 text-white tracking-tighter">
+              ${allTimeMetrics.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </h2>
+
+            <div className="mt-4 grid grid-cols-3 gap-2 py-3 px-4 bg-white/5 rounded-2xl border border-white/5 text-xs font-mono">
+              <div>
+                <span className="text-[9px] text-slate-500 uppercase font-sans font-bold block">Gross Profit</span>
+                <span className="text-cyan-400 font-bold">${allTimeMetrics.totalGrossProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-500 uppercase font-sans font-bold block">Discounts</span>
+                <span className="text-emerald-400 font-bold">-${allTimeMetrics.totalDiscounts.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-500 uppercase font-sans font-bold block">Net Margin</span>
+                <span className="text-[#FFD700] font-bold">
+                  {allTimeMetrics.totalNetRevenue > 0 
+                    ? `${((allTimeMetrics.totalProfit / allTimeMetrics.totalNetRevenue) * 100).toFixed(1)}%` 
+                    : '0.0%'}
+                </span>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2 mt-4">
-              <div className="h-1 w-1 rounded-full bg-[#FFD700] animate-ping" />
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Based on filtered archive results</p>
+              <div className="h-1.5 w-1.5 rounded-full bg-[#FFD700] animate-ping" />
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                Sum across all {allTimeMetrics.totalTransactions} transactions ({allTimeMetrics.totalItems} items sold)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Growth Card - From Where We Started to Where We Are by Percentage */}
+        <div className="bg-[#0a0a0a] border-2 border-emerald-500/40 rounded-3xl p-8 shadow-[0_0_25px_rgba(16,185,129,0.12)] relative overflow-hidden group transition-all duration-500 hover:shadow-[0_0_35px_rgba(16,185,129,0.22)] flex flex-col justify-between">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 blur-[80px] rounded-full -mr-16 -mt-16 animate-pulse" />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                  {allTimeMetrics.revenueGrowthPercent >= 0 ? (
+                    <TrendingUp size={22} className="text-emerald-400" />
+                  ) : (
+                    <TrendingDown size={22} className="text-rose-400" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-emerald-400 text-xs font-black uppercase tracking-[0.2em]">Business Growth</p>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Inception to Current Trajectory</p>
+                </div>
+              </div>
+              <span className={cn(
+                "text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border flex items-center gap-1",
+                allTimeMetrics.revenueGrowthPercent >= 0 
+                  ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                  : "text-rose-400 bg-rose-500/10 border-rose-500/20"
+              )}>
+                {allTimeMetrics.revenueGrowthPercent >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                {allTimeMetrics.revenueGrowthPercent >= 0 ? 'Expanding' : 'Contracting'}
+              </span>
+            </div>
+
+            <div className="flex items-baseline gap-3 mt-4">
+              <h2 className={cn(
+                "text-4xl sm:text-5xl font-black tracking-tighter",
+                allTimeMetrics.revenueGrowthPercent >= 0 ? "text-emerald-400" : "text-rose-400"
+              )}>
+                {allTimeMetrics.revenueGrowthPercent >= 0 ? '+' : ''}{allTimeMetrics.revenueGrowthPercent.toFixed(1)}%
+              </h2>
+              <span className="text-xs font-black uppercase tracking-wider text-slate-400 font-mono">
+                Revenue Growth
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 py-3 px-4 bg-white/5 rounded-2xl border border-white/5 text-xs">
+              <div className="border-r border-white/10 pr-2">
+                <span className="text-[9px] text-slate-500 uppercase font-sans font-bold block mb-1">
+                  Where We Started ({allTimeMetrics.startPeriodLabel})
+                </span>
+                <p className="text-slate-200 font-mono font-bold">
+                  ${allTimeMetrics.startRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </p>
+                <span className="text-[10px] text-slate-500 font-mono">Profit: ${allTimeMetrics.startProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="pl-2">
+                <span className="text-[9px] text-slate-500 uppercase font-sans font-bold block mb-1">
+                  Where We Are ({allTimeMetrics.currentPeriodLabel})
+                </span>
+                <p className="text-[#FFD700] font-mono font-bold">
+                  ${allTimeMetrics.currentRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </p>
+                <span className="text-[10px] text-blue-400 font-mono">Profit: ${allTimeMetrics.currentProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 mt-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <div className={cn("h-1.5 w-1.5 rounded-full", allTimeMetrics.profitGrowthPercent >= 0 ? "bg-emerald-400" : "bg-rose-400")} />
+                Net Profit Growth: <span className={cn(allTimeMetrics.profitGrowthPercent >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                  {allTimeMetrics.profitGrowthPercent >= 0 ? '+' : ''}{allTimeMetrics.profitGrowthPercent.toFixed(1)}%
+                </span>
+              </span>
+              <span className="text-slate-500 font-mono font-normal">
+                {allTimeMetrics.activeDaysCount > 1 ? `${allTimeMetrics.activeDaysCount} Active Days` : 'Inception Baseline'}
+              </span>
             </div>
           </div>
         </div>
@@ -672,18 +1167,19 @@ export default function Sales() {
           </div>
           
           {/* Period Selector Tabs */}
-          <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 md:w-80">
+          <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 md:w-96 flex-wrap">
             {([
               { id: 'daily', label: 'Daily' },
               { id: 'monthly', label: 'Monthly' },
               { id: 'semi-annual', label: 'Semi-Annual' },
-              { id: 'annual', label: 'Annual' }
+              { id: 'annual', label: 'Annual' },
+              { id: 'all-time', label: 'All-Time' }
             ] as const).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setReportPeriod(tab.id)}
                 className={cn(
-                  "flex-1 py-2 text-center text-[10px] font-black uppercase tracking-wider rounded-xl transition-all",
+                  "flex-1 min-w-[60px] py-2 text-center text-[10px] font-black uppercase tracking-wider rounded-xl transition-all",
                   reportPeriod === tab.id
                     ? "bg-[#FFD700] text-[#0a0a0a] shadow-[0_0_15px_rgba(255,215,0,0.15)]"
                     : "text-slate-400 hover:text-white hover:bg-white/5"
@@ -700,9 +1196,20 @@ export default function Sales() {
           <div className="lg:col-span-4 flex flex-col justify-center space-y-4">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                Select {reportPeriod === 'semi-annual' ? 'Half-Year Period' : reportPeriod === 'annual' ? 'Target Year' : reportPeriod === 'monthly' ? 'Target Month' : 'Target Date'}
+                {reportPeriod === 'all-time' ? 'All-Time Archive Audit' : `Select ${reportPeriod === 'semi-annual' ? 'Half-Year Period' : reportPeriod === 'annual' ? 'Target Year' : reportPeriod === 'monthly' ? 'Target Month' : 'Target Date'}`}
               </label>
               
+              {reportPeriod === 'all-time' && (
+                <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-2 animate-in fade-in duration-300">
+                  <p className="text-xs font-black text-[#FFD700] uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles size={14} /> Full Inception Audit
+                  </p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
+                    Auditing all {allTimeMetrics.totalTransactions} recorded transactions across entire archive history with full revenue, profit, discounts, and growth trajectory.
+                  </p>
+                </div>
+              )}
+
               {reportPeriod === 'daily' && (
                 <input 
                   type="date"
@@ -770,47 +1277,88 @@ export default function Sales() {
                 ) : (
                   <Download size={14} />
                 )}
-                <span>Download {reportPeriod === 'daily' ? 'Daily' : reportPeriod === 'monthly' ? 'Monthly' : reportPeriod === 'semi-annual' ? 'Semi-Annual' : 'Annual'} Report</span>
+                <span>Download {reportPeriod === 'daily' ? 'Daily' : reportPeriod === 'monthly' ? 'Monthly' : reportPeriod === 'semi-annual' ? 'Semi-Annual' : reportPeriod === 'annual' ? 'Annual' : 'All-Time Financial'} Report</span>
               </button>
             </div>
           </div>
 
-          {/* Right Column: Display Metrics */}
-          <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {/* Right Column: Display Metrics - Revenue, Gross Profit, Net Profit, AND Growth */}
+          <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {/* Revenue card */}
-            <div className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between group/metric relative overflow-hidden">
+            <div className="p-5 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between group/metric relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-[#FFD700]/5 blur-2xl rounded-full" />
               <div className="relative z-10">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">
-                  Revenue ({reportPeriod === 'daily' ? 'Selected Day' : reportPeriod === 'monthly' ? 'Selected Month' : reportPeriod === 'semi-annual' ? 'Selected Half' : 'Selected Year'})
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+                  Revenue ({periodReportData.periodLabelShort})
                 </span>
-                <p className="text-3xl font-black text-[#FFD700] tracking-tighter">
+                <p className="text-xl sm:text-2xl font-black text-[#FFD700] tracking-tighter">
                   ${periodReportData.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
-              <div className="mt-6 flex items-center justify-between text-[10px] text-slate-600 font-mono relative z-10">
-                <span>GROSS SALES</span>
-                <span className="text-slate-500 font-bold">{periodReportData.count} ITEMS</span>
+              <div className="mt-4 flex items-center justify-between text-[9px] text-slate-600 font-mono relative z-10">
+                <span>NET REVENUE</span>
+                <span className="text-slate-500 font-bold">{periodReportData.count} SALES</span>
               </div>
             </div>
 
-            {/* Profit card */}
-            <div className="p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between group/metric relative overflow-hidden">
+            {/* Gross Profit card */}
+            <div className="p-5 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between group/metric relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 blur-2xl rounded-full" />
+              <div className="relative z-10">
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+                  Gross Profit ({periodReportData.periodLabelShort})
+                </span>
+                <p className="text-xl sm:text-2xl font-black text-cyan-300 tracking-tighter">
+                  ${periodReportData.grossProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-[9px] text-slate-600 font-mono relative z-10">
+                <span>GROSS MARGIN</span>
+                <span className="font-bold text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded">
+                  {periodReportData.grossMarginPercent.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+
+            {/* Net Profit card */}
+            <div className="p-5 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between group/metric relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 blur-2xl rounded-full" />
               <div className="relative z-10">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">
-                  Net Profit ({reportPeriod === 'daily' ? 'Selected Day' : reportPeriod === 'monthly' ? 'Selected Month' : reportPeriod === 'semi-annual' ? 'Selected Half' : 'Selected Year'})
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+                  Net Profit ({periodReportData.periodLabelShort})
                 </span>
-                <p className="text-3xl font-black text-blue-400 tracking-tighter">
+                <p className="text-xl sm:text-2xl font-black text-blue-400 tracking-tighter">
                   ${periodReportData.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
-              <div className="mt-6 flex items-center justify-between text-[10px] text-slate-600 font-mono relative z-10">
+              <div className="mt-4 flex items-center justify-between text-[9px] text-slate-600 font-mono relative z-10">
                 <span>NET MARGIN</span>
-                <span className={cn("font-bold px-2 py-0.5 rounded", periodReportData.profit >= 0 ? "text-emerald-400 bg-emerald-500/10" : "text-rose-400 bg-rose-500/10")}>
+                <span className={cn("font-bold px-1.5 py-0.5 rounded", periodReportData.profit >= 0 ? "text-emerald-400 bg-emerald-500/10" : "text-rose-400 bg-rose-500/10")}>
                   {periodReportData.revenue > 0 
                     ? `${((periodReportData.profit / periodReportData.revenue) * 100).toFixed(1)}%` 
                     : '0.0%'}
+                </span>
+              </div>
+            </div>
+
+            {/* Period Growth card */}
+            <div className="p-5 bg-white/5 rounded-3xl border border-white/5 hover:border-white/10 transition-all flex flex-col justify-between group/metric relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-2xl rounded-full" />
+              <div className="relative z-10">
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+                  Growth ({periodReportData.priorLabel})
+                </span>
+                <p className={cn(
+                  "text-xl sm:text-2xl font-black tracking-tighter",
+                  periodReportData.growth >= 0 ? "text-emerald-400" : "text-rose-400"
+                )}>
+                  {periodReportData.growth >= 0 ? '+' : ''}{periodReportData.growth.toFixed(1)}%
+                </p>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-[9px] font-mono relative z-10">
+                <span className="text-slate-500 uppercase">Profit Growth</span>
+                <span className={cn("font-bold", periodReportData.profitGrowth >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                  {periodReportData.profitGrowth >= 0 ? '+' : ''}{periodReportData.profitGrowth.toFixed(1)}%
                 </span>
               </div>
             </div>
@@ -823,21 +1371,29 @@ export default function Sales() {
         <div className="bg-[#050505] border border-white/5 rounded-3xl p-8 flex items-center justify-between shadow-2xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD700]/5 blur-[60px] rounded-full" />
           <div className="relative z-10">
-            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Total Sales Revenue (Net)</p>
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">
+              {searchTerm ? 'Filtered Sales Revenue (Net)' : 'Total Sales Revenue (Net)'}
+            </p>
             <h2 className="text-4xl font-black mt-2 text-white group-hover:gold-text transition-all">
               ${totalNetRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h2>
-            <p className="text-[10px] text-slate-600 mt-2 font-mono uppercase tracking-tighter">Vault Liquidity</p>
+            <p className="text-[10px] text-slate-600 mt-2 font-mono uppercase tracking-tighter">
+              {searchTerm ? `Filtered by "${searchTerm}"` : `All-Time Archive Net: $${allTimeMetrics.totalNetRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+            </p>
           </div>
           <DollarSign size={48} className="text-slate-800 group-hover:text-[#FFD700]/20 transition-colors" />
         </div>
         <div className="vault-card p-8 flex items-center justify-between group">
           <div>
-            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Transaction Count</p>
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">
+              {searchTerm ? 'Filtered Transactions' : 'Transaction Count'}
+            </p>
             <h2 className="text-4xl font-black mt-2 text-white group-hover:gold-text transition-all">
               {totalTransactionCount}
             </h2>
-            <p className="text-[10px] text-slate-600 mt-2 font-mono uppercase tracking-tighter">{sales.length} items archived</p>
+            <p className="text-[10px] text-slate-600 mt-2 font-mono uppercase tracking-tighter">
+              {searchTerm ? `${filteredSales.length} items shown (${sales.length} total)` : `${sales.length} items archived`}
+            </p>
           </div>
           <History size={48} className="text-white/10 group-hover:text-[#FFD700]/20 transition-colors" />
         </div>
