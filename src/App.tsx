@@ -24,15 +24,16 @@ import Outflow from './pages/Outflow';
 import ProfitDistribution from './pages/ProfitDistribution';
 import BusinessIntelligenceReport from './pages/BusinessIntelligenceReport';
 import TaxManager from './pages/TaxManager';
+import DebtPOS from './pages/DebtPOS';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 import PinGuard from './components/PinGuard';
 import ThemeSwitcher from './components/ThemeSwitcher';
 import { SafeRender } from './components/SafeRender';
-import { AlertTriangle, Key, ExternalLink, Settings as SettingsIcon, Building2, Receipt } from 'lucide-react';
+import { AlertTriangle, Key, ExternalLink, Settings as SettingsIcon, Building2, Receipt, CreditCard } from 'lucide-react';
 
-type Page = 'dashboard' | 'inventory' | 'pos' | 'sales' | 'outflow' | 'profit-distribution' | 'bi-report' | 'tax-manager' | 'settings';
+type Page = 'dashboard' | 'inventory' | 'pos' | 'debt-pos' | 'sales' | 'outflow' | 'profit-distribution' | 'bi-report' | 'tax-manager' | 'settings';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -208,6 +209,7 @@ export default function App() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'inventory', label: 'Inventory', icon: Package },
     { id: 'pos', label: 'POS', icon: ShoppingCart },
+    { id: 'debt-pos', label: 'Debt POS', icon: CreditCard },
     { id: 'sales', label: 'Sales Archive', icon: History },
     { id: 'outflow', label: 'Outflow Guardian', icon: ShieldCheck },
     { id: 'profit-distribution', label: 'Profit Distribution', icon: TrendingUp },
@@ -339,6 +341,7 @@ export default function App() {
               {activePage === 'dashboard' && <Dashboard />}
               {activePage === 'inventory' && <Inventory />}
               {activePage === 'pos' && <POS />}
+              {activePage === 'debt-pos' && <DebtPOS />}
               {activePage === 'sales' && <Sales />}
               {activePage === 'outflow' && <Outflow />}
               {activePage === 'profit-distribution' && <ProfitDistribution />}
