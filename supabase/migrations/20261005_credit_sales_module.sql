@@ -4,7 +4,6 @@
 -- DO NOT alter any existing tables, columns, or views.
 -- ==============================================================================
 
--- 1. Table: credit_sales
 CREATE TABLE IF NOT EXISTS public.credit_sales (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_name TEXT NOT NULL,
@@ -23,7 +22,6 @@ CREATE TABLE IF NOT EXISTS public.credit_sales (
     completed_at TIMESTAMPTZ
 );
 
--- 2. Table: credit_sale_items
 CREATE TABLE IF NOT EXISTS public.credit_sale_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     credit_sale_id UUID NOT NULL REFERENCES public.credit_sales(id) ON DELETE CASCADE,
@@ -37,7 +35,6 @@ CREATE TABLE IF NOT EXISTS public.credit_sale_items (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 3. Table: credit_payments
 CREATE TABLE IF NOT EXISTS public.credit_payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     credit_sale_id UUID NOT NULL REFERENCES public.credit_sales(id) ON DELETE CASCADE,
@@ -51,7 +48,6 @@ CREATE TABLE IF NOT EXISTS public.credit_payments (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 4. Table: credit_reminders
 CREATE TABLE IF NOT EXISTS public.credit_reminders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     credit_sale_id UUID NOT NULL REFERENCES public.credit_sales(id) ON DELETE CASCADE,
@@ -63,43 +59,74 @@ CREATE TABLE IF NOT EXISTS public.credit_reminders (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Performance Indexes on NEW tables only
+-- Performance Indexes on new tables
 CREATE INDEX IF NOT EXISTS idx_credit_sales_status ON public.credit_sales(status);
 CREATE INDEX IF NOT EXISTS idx_credit_sales_due_date ON public.credit_sales(due_date);
 CREATE INDEX IF NOT EXISTS idx_credit_sale_items_credit_sale_id ON public.credit_sale_items(credit_sale_id);
 CREATE INDEX IF NOT EXISTS idx_credit_payments_credit_sale_id ON public.credit_payments(credit_sale_id);
 CREATE INDEX IF NOT EXISTS idx_credit_reminders_credit_sale_id ON public.credit_reminders(credit_sale_id);
 
--- Row Level Security (RLS) on NEW tables only
+-- Row Level Security (RLS) on new tables
 ALTER TABLE public.credit_sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.credit_sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.credit_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.credit_reminders ENABLE ROW LEVEL SECURITY;
 
--- Policies for public and authenticated access to the new module tables
+-- Policies for Authenticated Users
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_policies WHERE tablename = 'credit_sales' AND policyname = 'Enable all access on credit_sales'
+        SELECT 1 FROM pg_policies WHERE tablename = 'credit_sales' AND policyname = 'Authenticated users can manage credit_sales'
     ) THEN
-        CREATE POLICY "Enable all access on credit_sales" ON public.credit_sales FOR ALL USING (true) WITH CHECK (true);
+        CREATE POLICY "Authenticated users can manage credit_sales" ON public.credit_sales
+            FOR ALL TO authenticated USING (true) WITH CHECK (true);
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM pg_policies WHERE tablename = 'credit_sale_items' AND policyname = 'Enable all access on credit_sale_items'
+        SELECT 1 FROM pg_policies WHERE tablename = 'credit_sale_items' AND policyname = 'Authenticated users can manage credit_sale_items'
     ) THEN
-        CREATE POLICY "Enable all access on credit_sale_items" ON public.credit_sale_items FOR ALL USING (true) WITH CHECK (true);
+        CREATE POLICY "Authenticated users can manage credit_sale_items" ON public.credit_sale_items
+            FOR ALL TO authenticated USING (true) WITH CHECK (true);
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM pg_policies WHERE tablename = 'credit_payments' AND policyname = 'Enable all access on credit_payments'
+        SELECT 1 FROM pg_policies WHERE tablename = 'credit_payments' AND policyname = 'Authenticated users can manage credit_payments'
     ) THEN
-        CREATE POLICY "Enable all access on credit_payments" ON public.credit_payments FOR ALL USING (true) WITH CHECK (true);
+        CREATE POLICY "Authenticated users can manage credit_payments" ON public.credit_payments
+            FOR ALL TO authenticated USING (true) WITH CHECK (true);
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM pg_policies WHERE tablename = 'credit_reminders' AND policyname = 'Enable all access on credit_reminders'
+        SELECT 1 FROM pg_policies WHERE tablename = 'credit_reminders' AND policyname = 'Authenticated users can manage credit_reminders'
     ) THEN
-        CREATE POLICY "Enable all access on credit_reminders" ON public.credit_reminders FOR ALL USING (true) WITH CHECK (true);
+        CREATE POLICY "Authenticated users can manage credit_reminders" ON public.credit_reminders
+            FOR ALL TO authenticated USING (true) WITH CHECK (true);
     END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.credit_sales, public.credit_sale_items, public.credit_payments, public.credit_reminders TO authenticated;
+REVOKE ALL ON public.credit_sales, public.credit_sale_items, public.credit_payments, public.credit_reminders FROM anon;
+
+-- Realtime Publication for cross-device live updates
+DO $$
+BEGIN
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.credit_sales;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.credit_sale_items;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.credit_payments;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.credit_reminders;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
 END $$;

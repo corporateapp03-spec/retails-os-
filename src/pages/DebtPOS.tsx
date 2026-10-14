@@ -19,7 +19,8 @@ import {
   formatTZS, 
   safeNum, 
   checkCreditTablesExist,
-  postFullyPaidToSalesArchive
+  postFullyPaidToSalesArchive,
+  subscribeToDebtPosRealtime
 } from '../lib/debtPosService';
 import { 
   CreditCard, 
@@ -109,9 +110,37 @@ export default function DebtPOS() {
   const [itemSearchTerm, setItemSearchTerm] = useState('');
   const [isCreatingSale, setIsCreatingSale] = useState(false);
 
-  // Load Data
+  // Load Data and Subscribe to Realtime Cloud Updates across all devices
   useEffect(() => {
     loadAllData();
+
+    // 1. Subscribe to Supabase Realtime for Debt POS tables
+    const unsubscribe = subscribeToDebtPosRealtime(() => {
+      console.log('Realtime cloud update detected from Supabase, refreshing Debt POS...');
+      loadAllData();
+    });
+
+    // 2. Periodic multi-device background sync (every 6 seconds)
+    const pollInterval = setInterval(() => {
+      fetchCreditSales().then(({ sales: freshSales, tablesExist: exists, error: fetchErr }) => {
+        if (!fetchErr && freshSales) {
+          setSales(freshSales);
+          setTablesExist(exists);
+        }
+      });
+    }, 6000);
+
+    // 3. Also refresh when window or tab regains focus
+    const handleFocus = () => {
+      loadAllData();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      unsubscribe();
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   async function loadAllData() {
@@ -481,10 +510,17 @@ ALTER TABLE public.credit_sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.credit_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.credit_reminders ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Enable all on credit_sales" ON public.credit_sales FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all on credit_sale_items" ON public.credit_sale_items FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all on credit_payments" ON public.credit_payments FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all on credit_reminders" ON public.credit_reminders FOR ALL USING (true) WITH CHECK (true);`;
+CREATE POLICY "Authenticated users can manage credit_sales" ON public.credit_sales
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users can manage credit_sale_items" ON public.credit_sale_items
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users can manage credit_payments" ON public.credit_payments
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users can manage credit_reminders" ON public.credit_reminders
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.credit_sales, public.credit_sale_items, public.credit_payments, public.credit_reminders TO authenticated;
+REVOKE ALL ON public.credit_sales, public.credit_sale_items, public.credit_payments, public.credit_reminders FROM anon;`;
 
     navigator.clipboard.writeText(sqlText);
     setCopiedSql(true);
@@ -544,6 +580,46 @@ CREATE POLICY "Enable all on credit_reminders" ON public.credit_reminders FOR AL
           </button>
         </div>
       </div>
+
+      {/* Cloud Synchronization Status Banner */}
+      {tablesExist ? (
+        <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-3 px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.9)]" />
+            <span className="font-bold text-white uppercase tracking-wider text-[11px]">
+              Authoritative Supabase Cloud Synchronized
+            </span>
+            <span className="text-slate-400 font-mono text-[10px] hidden md:inline">
+              (Project: wnzbavrtgnuchdovndxm.supabase.co • Realtime Active)
+            </span>
+          </div>
+          <span className="text-[11px] text-emerald-300 font-mono font-bold flex items-center gap-1.5">
+            <Activity size={12} />
+            Device A ↔ Device B Realtime Live
+          </span>
+        </div>
+      ) : (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+          <div className="flex items-start gap-3">
+            <ShieldAlert size={22} className="text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-black text-amber-300 uppercase tracking-wider text-xs flex items-center gap-2">
+                Action Required: Initialize Supabase Cloud Tables for Multi-Device Sync
+              </p>
+              <p className="text-slate-300 text-[11px] mt-1 leading-relaxed">
+                The 4 new isolated tables (<code className="text-[#FFD700]">credit_sales</code>, <code className="text-[#FFD700]">credit_sale_items</code>, <code className="text-[#FFD700]">credit_payments</code>, <code className="text-[#FFD700]">credit_reminders</code>) need to be initialized in cloud project <code className="text-white font-mono">wnzbavrtgnuchdovndxm</code> so all devices read and write the exact same shared records.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsSqlModalOpen(true)}
+            className="px-4 py-2.5 bg-[#FFD700] hover:bg-[#FFD700]/90 text-black font-black text-xs rounded-xl uppercase tracking-wider shrink-0 transition-all shadow-[0_0_15px_rgba(255,215,0,0.3)] flex items-center gap-1.5"
+          >
+            <Database size={14} />
+            View & Copy SQL Migration
+          </button>
+        </div>
+      )}
 
       {/* Notifications */}
       {error && (
@@ -1866,7 +1942,24 @@ CREATE TABLE IF NOT EXISTS public.credit_reminders (
     sent_at TIMESTAMPTZ,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);`}</pre>
+);
+
+ALTER TABLE public.credit_sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.credit_sale_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.credit_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.credit_reminders ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can manage credit_sales" ON public.credit_sales
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users can manage credit_sale_items" ON public.credit_sale_items
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users can manage credit_payments" ON public.credit_payments
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users can manage credit_reminders" ON public.credit_reminders
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.credit_sales, public.credit_sale_items, public.credit_payments, public.credit_reminders TO authenticated;
+REVOKE ALL ON public.credit_sales, public.credit_sale_items, public.credit_payments, public.credit_reminders FROM anon;`}</pre>
               </div>
             </div>
 

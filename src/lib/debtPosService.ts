@@ -1,19 +1,12 @@
 // ==============================================================================
 // DEBT POS / CREDIT SALES SERVICE & ENGINE
-// Completely isolated from existing accounting and inventory calculations.
-// Reads existing inventory using standard queries and uses approved stock updates.
+// Authoritative Cloud Implementation using Supabase (wnzbavrtgnuchdovndxm.supabase.co)
+// Direct multi-device synchronization with Supabase Realtime.
+// Zero local-only authoritative storage.
 // ==============================================================================
 
 import { supabase, isConfigured } from './supabase';
 import { CreditSale, CreditSaleItem, CreditPayment, CreditReminder, DebtDashboardMetrics } from '../types/debtPos';
-
-const STORAGE_KEYS = {
-  SALES: 'retailos_credit_sales_cache',
-  ITEMS: 'retailos_credit_sale_items_cache',
-  PAYMENTS: 'retailos_credit_payments_cache',
-  REMINDERS: 'retailos_credit_reminders_cache',
-  TABLES_EXIST: 'retailos_credit_tables_exist_flag'
-};
 
 // Safe numerical helper
 export const safeNum = (val: any): number => {
@@ -31,29 +24,18 @@ export async function checkCreditTablesExist(): Promise<boolean> {
   if (!isConfigured) return false;
   try {
     const { error } = await supabase.from('credit_sales').select('id').limit(1);
-    const exists = !error || (error.code !== 'PGRST205' && !error.message?.includes('schema cache'));
-    localStorage.setItem(STORAGE_KEYS.TABLES_EXIST, exists ? 'true' : 'false');
-    return exists;
+    if (!error) return true;
+    if (
+      error.code === 'PGRST205' || 
+      error.message?.includes('schema cache') ||
+      error.message?.includes('does not exist')
+    ) {
+      return false;
+    }
+    // If table exists but has RLS policy / permission error (e.g. 42501), the table DOES exist in Postgres
+    return true;
   } catch {
     return false;
-  }
-}
-
-// Local storage fallback helpers for 100% resilient operation
-function getLocal<T>(key: string): T[] {
-  try {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLocal<T>(key: string, data: T[]) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (err) {
-    console.warn(`Failed to save ${key} to localStorage:`, err);
   }
 }
 
@@ -96,81 +78,92 @@ export function calculateDueStatus(dueDateStr?: string | null): DueStatus {
   }
 }
 
-// Fetch all Credit Sales with hydrated items, payments, and reminders
+// Fetch all Credit Sales DIRECTLY from Supabase (No local-only authoritative storage)
 export async function fetchCreditSales(): Promise<{ sales: CreditSale[]; tablesExist: boolean; error: string | null }> {
-  let tablesExist = false;
+  if (!isConfigured) {
+    return { sales: [], tablesExist: false, error: 'Supabase credentials are not configured.' };
+  }
+
   try {
-    tablesExist = await checkCreditTablesExist();
-  } catch {
-    tablesExist = false;
-  }
+    const [salesRes, itemsRes, paymentsRes, remindersRes] = await Promise.all([
+      supabase.from('credit_sales').select('*').order('created_at', { ascending: false }),
+      supabase.from('credit_sale_items').select('*'),
+      supabase.from('credit_payments').select('*').order('created_at', { ascending: true }),
+      supabase.from('credit_reminders').select('*').order('created_at', { ascending: false })
+    ]);
 
-  if (tablesExist && isConfigured) {
-    try {
-      const [salesRes, itemsRes, paymentsRes, remindersRes] = await Promise.all([
-        supabase.from('credit_sales').select('*').order('created_at', { ascending: false }),
-        supabase.from('credit_sale_items').select('*'),
-        supabase.from('credit_payments').select('*').order('created_at', { ascending: true }),
-        supabase.from('credit_reminders').select('*').order('created_at', { ascending: false })
-      ]);
+    // Check if tables are missing or permission is denied
+    if (salesRes.error) {
+      const isMissing = 
+        salesRes.error.code === 'PGRST205' || 
+        salesRes.error.message?.includes('schema cache') ||
+        salesRes.error.message?.includes('does not exist');
 
-      if (salesRes.error) throw salesRes.error;
+      if (isMissing) {
+        return { 
+          sales: [], 
+          tablesExist: false, 
+          error: 'Supabase table "credit_sales" does not exist in the database. Please run the SQL migration in Supabase SQL Editor.' 
+        };
+      }
 
-      const rawSales = salesRes.data || [];
-      const rawItems = itemsRes.data || [];
-      const rawPayments = paymentsRes.data || [];
-      const rawReminders = remindersRes.data || [];
+      if (salesRes.error.code === '42501') {
+        return {
+          sales: [],
+          tablesExist: true,
+          error: 'Access restricted (42501): Please ensure you are logged into RetailOS with an authenticated user account to access Debt POS.'
+        };
+      }
 
-      // Save to local cache for offline resilience
-      saveLocal(STORAGE_KEYS.SALES, rawSales);
-      saveLocal(STORAGE_KEYS.ITEMS, rawItems);
-      saveLocal(STORAGE_KEYS.PAYMENTS, rawPayments);
-      saveLocal(STORAGE_KEYS.REMINDERS, rawReminders);
-
-      const hydrated: CreditSale[] = rawSales.map(sale => ({
-        ...sale,
-        total_amount: safeNum(sale.total_amount),
-        total_capital: safeNum(sale.total_capital),
-        total_profit: safeNum(sale.total_profit),
-        amount_paid: safeNum(sale.amount_paid),
-        remaining_amount: safeNum(sale.remaining_amount),
-        capital_recovered: safeNum(sale.capital_recovered),
-        profit_recovered: safeNum(sale.profit_recovered),
-        items: rawItems.filter(i => i.credit_sale_id === sale.id),
-        payments: rawPayments.filter(p => p.credit_sale_id === sale.id),
-        reminders: rawReminders.filter(r => r.credit_sale_id === sale.id)
-      }));
-
-      return { sales: hydrated, tablesExist: true, error: null };
-    } catch (err: any) {
-      console.warn('Supabase fetch failed, falling back to local cache:', err);
+      throw salesRes.error;
     }
+
+    if (itemsRes.error) {
+      console.warn('credit_sale_items fetch warning:', itemsRes.error);
+    }
+    if (paymentsRes.error) {
+      console.warn('credit_payments fetch warning:', paymentsRes.error);
+    }
+    if (remindersRes.error) {
+      console.warn('credit_reminders fetch warning:', remindersRes.error);
+    }
+
+    const rawSales = salesRes.data || [];
+    const rawItems = itemsRes.data || [];
+    const rawPayments = paymentsRes.data || [];
+    const rawReminders = remindersRes.data || [];
+
+    const hydrated: CreditSale[] = rawSales.map(sale => ({
+      ...sale,
+      total_amount: safeNum(sale.total_amount),
+      total_capital: safeNum(sale.total_capital),
+      total_profit: safeNum(sale.total_profit),
+      amount_paid: safeNum(sale.amount_paid),
+      remaining_amount: safeNum(sale.remaining_amount),
+      capital_recovered: safeNum(sale.capital_recovered),
+      profit_recovered: safeNum(sale.profit_recovered),
+      items: rawItems.filter(i => i.credit_sale_id === sale.id),
+      payments: rawPayments.filter(p => p.credit_sale_id === sale.id),
+      reminders: rawReminders.filter(r => r.credit_sale_id === sale.id)
+    }));
+
+    return { sales: hydrated, tablesExist: true, error: null };
+  } catch (err: any) {
+    console.error('Error fetching credit sales directly from Supabase:', err);
+    const isMissing = 
+      err?.code === 'PGRST205' || 
+      err?.message?.includes('schema cache') ||
+      err?.message?.includes('does not exist');
+
+    return { 
+      sales: [], 
+      tablesExist: !isMissing, 
+      error: err.message || 'Failed to load cloud credit sales from Supabase.' 
+    };
   }
-
-  // Fallback to local storage cache
-  const localSales = getLocal<CreditSale>(STORAGE_KEYS.SALES);
-  const localItems = getLocal<CreditSaleItem>(STORAGE_KEYS.ITEMS);
-  const localPayments = getLocal<CreditPayment>(STORAGE_KEYS.PAYMENTS);
-  const localReminders = getLocal<CreditReminder>(STORAGE_KEYS.REMINDERS);
-
-  const hydrated = localSales.map(sale => ({
-    ...sale,
-    total_amount: safeNum(sale.total_amount),
-    total_capital: safeNum(sale.total_capital),
-    total_profit: safeNum(sale.total_profit),
-    amount_paid: safeNum(sale.amount_paid),
-    remaining_amount: safeNum(sale.remaining_amount),
-    capital_recovered: safeNum(sale.capital_recovered),
-    profit_recovered: safeNum(sale.profit_recovered),
-    items: localItems.filter(i => i.credit_sale_id === sale.id),
-    payments: localPayments.filter(p => p.credit_sale_id === sale.id),
-    reminders: localReminders.filter(r => r.credit_sale_id === sale.id)
-  }));
-
-  return { sales: hydrated, tablesExist, error: null };
 }
 
-// Create a new Credit Sale with exact financial formulas and approved inventory deduction
+// Create a new Credit Sale DIRECTLY in Supabase
 export interface NewCreditSalePayload {
   customer_name: string;
   customer_phone?: string;
@@ -187,6 +180,10 @@ export interface NewCreditSalePayload {
 }
 
 export async function createCreditSale(payload: NewCreditSalePayload): Promise<{ creditSale: CreditSale; error: string | null }> {
+  if (!isConfigured) {
+    return { creditSale: null as any, error: 'Supabase credentials are not configured.' };
+  }
+
   if (!payload.customer_name?.trim()) {
     return { creditSale: null as any, error: 'Customer name is required' };
   }
@@ -228,10 +225,14 @@ export async function createCreditSale(payload: NewCreditSalePayload): Promise<{
     };
   });
 
-  const total_profit = total_amount - total_capital;
+  const total_profit = Math.max(0, total_amount - total_capital);
   const remaining_amount = total_amount;
 
-  const creditSale: CreditSale = {
+  const validDueDate = payload.due_date && /^\d{4}-\d{2}-\d{2}$/.test(payload.due_date) 
+    ? payload.due_date 
+    : null;
+
+  const creditSaleData = {
     id: saleId,
     customer_name: payload.customer_name.trim(),
     customer_phone: payload.customer_phone?.trim() || null,
@@ -242,93 +243,92 @@ export async function createCreditSale(payload: NewCreditSalePayload): Promise<{
     remaining_amount,
     capital_recovered: 0,
     profit_recovered: 0,
-    due_date: payload.due_date || null,
-    status: 'pending',
+    due_date: validDueDate,
+    status: 'pending' as const,
     notes: payload.notes?.trim() || null,
     created_at: createdAt,
-    completed_at: null,
+    completed_at: null
+  };
+
+  // 2. Perform Supabase Database Transaction:
+  // Step A: Insert credit_sales in Supabase
+  const { error: saleErr } = await supabase.from('credit_sales').insert([creditSaleData]);
+  if (saleErr) {
+    console.error('Supabase credit_sales insert error:', saleErr);
+    if (
+      saleErr.code === 'PGRST205' || 
+      saleErr.message?.includes('schema cache') ||
+      saleErr.message?.includes('does not exist')
+    ) {
+      return { 
+        creditSale: null as any, 
+        error: 'Supabase table "credit_sales" does not exist in the database. Please run the SQL migration in Supabase SQL Editor first.' 
+      };
+    }
+    if (saleErr.code === '42501') {
+      return {
+        creditSale: null as any,
+        error: 'Permission denied (42501): Please ensure you are logged into RetailOS with an authenticated account.'
+      };
+    }
+    return { creditSale: null as any, error: saleErr.message || 'Failed to insert credit sale into Supabase.' };
+  }
+
+  // Step B: Insert credit_sale_items in Supabase
+  const { error: itemsErr } = await supabase.from('credit_sale_items').insert(
+    preparedItems.map(i => ({
+      id: i.id,
+      credit_sale_id: i.credit_sale_id,
+      inventory_item_id: i.inventory_item_id,
+      item_name: i.item_name,
+      quantity: i.quantity,
+      cost_price: i.cost_price,
+      selling_price: i.selling_price,
+      capital_amount: i.capital_amount,
+      profit_amount: i.profit_amount,
+      created_at: i.created_at
+    }))
+  );
+
+  if (itemsErr) {
+    console.error('Supabase credit_sale_items insert error:', itemsErr);
+    // Cleanup parent to prevent orphan
+    await supabase.from('credit_sales').delete().eq('id', saleId);
+    return { creditSale: null as any, error: itemsErr.message || 'Failed to insert credit sale items into Supabase.' };
+  }
+
+  // Step C: Inventory Deduction in Supabase using established mechanism (POS.tsx)
+  try {
+    await Promise.all(payload.items.map(async (cartItem) => {
+      const { data: latest } = await supabase
+        .from('inventory')
+        .select('quantity')
+        .eq('id', cartItem.inventory_item_id)
+        .single();
+
+      const currentStock = safeNum(latest?.quantity);
+      const newStock = Math.max(0, currentStock - cartItem.quantity);
+
+      await supabase
+        .from('inventory')
+        .update({ quantity: newStock })
+        .eq('id', cartItem.inventory_item_id);
+    }));
+  } catch (invErr) {
+    console.warn('Inventory stock deduction notice:', invErr);
+  }
+
+  const completeCreditSale: CreditSale = {
+    ...creditSaleData,
     items: preparedItems,
     payments: [],
     reminders: []
   };
 
-  // 2. Inventory Deduction: Follows approved existing application pattern (POS.tsx)
-  if (isConfigured) {
-    try {
-      await Promise.all(payload.items.map(async (cartItem) => {
-        const { data: latest } = await supabase
-          .from('inventory')
-          .select('quantity')
-          .eq('id', cartItem.inventory_item_id)
-          .single();
-
-        const currentStock = safeNum(latest?.quantity);
-        const newStock = Math.max(0, currentStock - cartItem.quantity);
-
-        await supabase
-          .from('inventory')
-          .update({ quantity: newStock })
-          .eq('id', cartItem.inventory_item_id);
-      }));
-    } catch (err: any) {
-      console.warn('Inventory deduction warning on server:', err);
-    }
-  }
-
-  // 3. Persist to Supabase if tables exist
-  const tablesExist = await checkCreditTablesExist();
-  if (tablesExist && isConfigured) {
-    try {
-      const { error: saleErr } = await supabase.from('credit_sales').insert([{
-        id: creditSale.id,
-        customer_name: creditSale.customer_name,
-        customer_phone: creditSale.customer_phone,
-        total_amount: creditSale.total_amount,
-        total_capital: creditSale.total_capital,
-        total_profit: creditSale.total_profit,
-        amount_paid: creditSale.amount_paid,
-        remaining_amount: creditSale.remaining_amount,
-        capital_recovered: creditSale.capital_recovered,
-        profit_recovered: creditSale.profit_recovered,
-        due_date: creditSale.due_date,
-        status: creditSale.status,
-        notes: creditSale.notes,
-        created_at: creditSale.created_at
-      }]);
-
-      if (saleErr) throw saleErr;
-
-      const { error: itemsErr } = await supabase.from('credit_sale_items').insert(
-        preparedItems.map(i => ({
-          id: i.id,
-          credit_sale_id: i.credit_sale_id,
-          inventory_item_id: i.inventory_item_id,
-          item_name: i.item_name,
-          quantity: i.quantity,
-          cost_price: i.cost_price,
-          selling_price: i.selling_price,
-          capital_amount: i.capital_amount,
-          profit_amount: i.profit_amount,
-          created_at: i.created_at
-        }))
-      );
-
-      if (itemsErr) throw itemsErr;
-    } catch (err: any) {
-      console.warn('Supabase credit sale insert error, using local fallback:', err);
-    }
-  }
-
-  // 4. Update local cache
-  const localSales = getLocal<CreditSale>(STORAGE_KEYS.SALES);
-  const localItems = getLocal<CreditSaleItem>(STORAGE_KEYS.ITEMS);
-  saveLocal(STORAGE_KEYS.SALES, [creditSale, ...localSales]);
-  saveLocal(STORAGE_KEYS.ITEMS, [...preparedItems, ...localItems]);
-
-  return { creditSale, error: null };
+  return { creditSale: completeCreditSale, error: null };
 }
 
-// Record a Payment with Capital-First Recovery Logic
+// Record a Payment DIRECTLY in Supabase with Capital-First Recovery Logic
 export interface NewPaymentPayload {
   credit_sale_id: string;
   amount: number;
@@ -341,6 +341,10 @@ export async function recordCreditPayment(
   sale: CreditSale, 
   payload: NewPaymentPayload
 ): Promise<{ payment: CreditPayment; updatedSale: CreditSale; error: string | null }> {
+  if (!isConfigured) {
+    return { payment: null as any, updatedSale: sale, error: 'Supabase credentials are not configured.' };
+  }
+
   const paymentAmount = safeNum(payload.amount);
 
   if (paymentAmount <= 0) {
@@ -369,9 +373,6 @@ export async function recordCreditPayment(
   const new_capital_recovered = Math.min(sale.total_capital, sale.capital_recovered + capital_allocated);
   const new_profit_recovered = Math.min(sale.total_profit, sale.profit_recovered + profit_allocated);
 
-  // Status transitions:
-  // if remaining_amount == 0 => 'paid'
-  // else => 'partial'
   const new_status: 'paid' | 'partial' = new_remaining_amount === 0 ? 'paid' : 'partial';
   const completed_at = new_remaining_amount === 0 ? new Date().toISOString() : null;
 
@@ -391,6 +392,49 @@ export async function recordCreditPayment(
     created_at: paymentDate
   };
 
+  // 1. Insert payment directly into Supabase
+  const { error: payErr } = await supabase.from('credit_payments').insert([{
+    id: newPayment.id,
+    credit_sale_id: newPayment.credit_sale_id,
+    amount: newPayment.amount,
+    capital_allocated: newPayment.capital_allocated,
+    profit_allocated: newPayment.profit_allocated,
+    payment_method: newPayment.payment_method,
+    payment_date: newPayment.payment_date,
+    reference: newPayment.reference,
+    notes: newPayment.notes,
+    created_at: newPayment.created_at
+  }]);
+
+  if (payErr) {
+    console.error('Supabase credit_payments insert error:', payErr);
+    if (payErr.code === '42501') {
+      return { payment: null as any, updatedSale: sale, error: 'Permission denied (42501): Authenticated user session required to record payments.' };
+    }
+    return { payment: null as any, updatedSale: sale, error: payErr.message || 'Failed to record payment in Supabase.' };
+  }
+
+  // 2. Update credit_sales directly in Supabase
+  const { error: updateErr } = await supabase
+    .from('credit_sales')
+    .update({
+      amount_paid: new_amount_paid,
+      remaining_amount: new_remaining_amount,
+      capital_recovered: new_capital_recovered,
+      profit_recovered: new_profit_recovered,
+      status: new_status,
+      completed_at
+    })
+    .eq('id', sale.id);
+
+  if (updateErr) {
+    console.error('Supabase credit_sales update error:', updateErr);
+    if (updateErr.code === '42501') {
+      return { payment: null as any, updatedSale: sale, error: 'Permission denied (42501): Authenticated user session required to update credit sale balance.' };
+    }
+    return { payment: null as any, updatedSale: sale, error: updateErr.message || 'Failed to update credit sale balance in Supabase.' };
+  }
+
   const updatedSale: CreditSale = {
     ...sale,
     amount_paid: new_amount_paid,
@@ -402,68 +446,129 @@ export async function recordCreditPayment(
     payments: [...(sale.payments || []), newPayment]
   };
 
-  // If fully paid, optionally post to the existing Sales Archive via ledger integration
+  // If fully paid, post to Sales Archive via ledger integration
   if (new_status === 'paid') {
     try {
       await postFullyPaidToSalesArchive(updatedSale);
       updatedSale.posted_to_ledger = true;
     } catch (archiveErr) {
-      console.warn('Notice: Sales Archive posting will be available on demand:', archiveErr);
+      console.warn('Notice: Sales Archive posting error:', archiveErr);
     }
   }
-
-  // Persist to Supabase if tables exist
-  const tablesExist = await checkCreditTablesExist();
-  if (tablesExist && isConfigured) {
-    try {
-      // 1. Insert permanent payment record
-      const { error: payErr } = await supabase.from('credit_payments').insert([{
-        id: newPayment.id,
-        credit_sale_id: newPayment.credit_sale_id,
-        amount: newPayment.amount,
-        capital_allocated: newPayment.capital_allocated,
-        profit_allocated: newPayment.profit_allocated,
-        payment_method: newPayment.payment_method,
-        payment_date: newPayment.payment_date,
-        reference: newPayment.reference,
-        notes: newPayment.notes,
-        created_at: newPayment.created_at
-      }]);
-
-      if (payErr) throw payErr;
-
-      // 2. Update credit sale header
-      const { error: updateErr } = await supabase
-        .from('credit_sales')
-        .update({
-          amount_paid: new_amount_paid,
-          remaining_amount: new_remaining_amount,
-          capital_recovered: new_capital_recovered,
-          profit_recovered: new_profit_recovered,
-          status: new_status,
-          completed_at
-        })
-        .eq('id', sale.id);
-
-      if (updateErr) throw updateErr;
-    } catch (err: any) {
-      console.warn('Supabase payment recording error, using local fallback:', err);
-    }
-  }
-
-  // Update local cache
-  const localSales = getLocal<CreditSale>(STORAGE_KEYS.SALES);
-  const updatedLocalSales = localSales.map(s => s.id === sale.id ? updatedSale : s);
-  saveLocal(STORAGE_KEYS.SALES, updatedLocalSales);
-
-  const localPayments = getLocal<CreditPayment>(STORAGE_KEYS.PAYMENTS);
-  saveLocal(STORAGE_KEYS.PAYMENTS, [...localPayments, newPayment]);
 
   return { payment: newPayment, updatedSale, error: null };
 }
 
-// Isolated Integration: Post Fully Paid Credit Sale to Existing Sales Archive
-// Uses standard ledger table insert without altering schema or Sales.tsx logic
+// Cancel a Credit Sale directly in Supabase (Mark as cancelled, never delete, restore stock)
+export async function cancelCreditSale(sale: CreditSale): Promise<{ success: boolean; error: string | null }> {
+  if (!isConfigured) {
+    return { success: false, error: 'Supabase credentials are not configured.' };
+  }
+
+  if (sale.amount_paid > 0) {
+    return { success: false, error: 'Cannot cancel a credit sale that has recorded payments' };
+  }
+
+  // Restore inventory using established pattern from Sales.tsx
+  if (sale.items) {
+    try {
+      await Promise.all(sale.items.map(async (item) => {
+        const { data: latest } = await supabase
+          .from('inventory')
+          .select('quantity')
+          .eq('id', item.inventory_item_id)
+          .single();
+
+        const currentStock = safeNum(latest?.quantity);
+        const restoredStock = currentStock + safeNum(item.quantity);
+
+        await supabase
+          .from('inventory')
+          .update({ quantity: restoredStock })
+          .eq('id', item.inventory_item_id);
+      }));
+    } catch (err) {
+      console.warn('Failed to restore inventory on cancel:', err);
+    }
+  }
+
+  // Update status to 'cancelled' in Supabase
+  const { error: cancelErr } = await supabase
+    .from('credit_sales')
+    .update({ status: 'cancelled' })
+    .eq('id', sale.id);
+
+  if (cancelErr) {
+    return { success: false, error: cancelErr.message || 'Failed to cancel credit sale in Supabase.' };
+  }
+
+  return { success: true, error: null };
+}
+
+// Send / Record SMS Reminder directly in Supabase
+export async function recordAndLaunchSmsReminder(sale: CreditSale): Promise<{ message: string; launched: boolean }> {
+  const dueStatus = calculateDueStatus(sale.due_date);
+  const amountStr = formatTZS(sale.remaining_amount);
+  const dateFormatted = sale.due_date 
+    ? new Date(sale.due_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : 'as agreed';
+
+  let message = '';
+  let reminderType: 'due' | 'overdue' = 'due';
+
+  if (dueStatus.category === 'overdue') {
+    reminderType = 'overdue';
+    message = `Dear ${sale.customer_name}, your outstanding balance of ${amountStr} is overdue by ${dueStatus.daysDiff} days. Kindly arrange payment as soon as possible. Thank you.`;
+  } else {
+    reminderType = 'due';
+    message = `Dear ${sale.customer_name}, your outstanding balance is ${amountStr}. Your payment is due on ${dateFormatted}. Kindly arrange payment. Thank you.`;
+  }
+
+  const reminderId = crypto.randomUUID();
+  const sentAt = new Date().toISOString();
+
+  // Persist reminder directly to Supabase
+  if (isConfigured) {
+    try {
+      await supabase.from('credit_reminders').insert([{
+        id: reminderId,
+        credit_sale_id: sale.id,
+        reminder_type: reminderType,
+        scheduled_date: sale.due_date || new Date().toISOString().slice(0, 10),
+        message,
+        sent_at: sentAt,
+        status: 'sent',
+        created_at: sentAt
+      }]);
+    } catch (err) {
+      console.warn('Failed to insert reminder into Supabase:', err);
+    }
+  }
+
+  // Copy to clipboard
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(message);
+    }
+  } catch {}
+
+  // Launch device SMS app if phone is available
+  let launched = false;
+  if (sale.customer_phone) {
+    const cleanPhone = sale.customer_phone.replace(/[^0-9+]/g, '');
+    const smsUrl = `sms:${cleanPhone}?body=${encodeURIComponent(message)}`;
+    try {
+      window.location.href = smsUrl;
+      launched = true;
+    } catch (e) {
+      console.warn('Failed to launch native SMS:', e);
+    }
+  }
+
+  return { message, launched };
+}
+
+// Post Fully Paid Credit Sale to Existing Sales Archive via Ledger
 export async function postFullyPaidToSalesArchive(sale: CreditSale): Promise<{ success: boolean; error: string | null }> {
   if (sale.remaining_amount > 0 || sale.status !== 'paid') {
     return { success: false, error: 'Only fully settled credit sales can be posted to the Sales Archive' };
@@ -474,7 +579,7 @@ export async function postFullyPaidToSalesArchive(sale: CreditSale): Promise<{ s
   }
 
   try {
-    // Check if already posted by checking reference in ledger
+    // Check if already posted
     const { data: existing } = await supabase
       .from('ledger')
       .select('id')
@@ -510,132 +615,52 @@ export async function postFullyPaidToSalesArchive(sale: CreditSale): Promise<{ s
   }
 }
 
-// Cancel a Credit Sale (Mark as cancelled, never delete, restore stock)
-export async function cancelCreditSale(sale: CreditSale): Promise<{ success: boolean; error: string | null }> {
-  if (sale.amount_paid > 0) {
-    return { success: false, error: 'Cannot cancel a credit sale that has recorded payments' };
-  }
+// Realtime Subscription: Listens for postgres_changes on the 4 Debt POS tables
+export function subscribeToDebtPosRealtime(onDataChange: () => void): () => void {
+  if (!isConfigured) return () => {};
 
-  // Restore inventory using established pattern from Sales.tsx
-  if (isConfigured && sale.items) {
-    try {
-      await Promise.all(sale.items.map(async (item) => {
-        const { data: latest } = await supabase
-          .from('inventory')
-          .select('quantity')
-          .eq('id', item.inventory_item_id)
-          .single();
+  const channelName = `debt-pos-realtime-${Date.now()}`;
+  const channel = supabase
+    .channel(channelName)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'credit_sales' },
+      (payload) => {
+        console.log('Realtime change in credit_sales:', payload);
+        onDataChange();
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'credit_payments' },
+      (payload) => {
+        console.log('Realtime change in credit_payments:', payload);
+        onDataChange();
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'credit_sale_items' },
+      (payload) => {
+        console.log('Realtime change in credit_sale_items:', payload);
+        onDataChange();
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'credit_reminders' },
+      (payload) => {
+        console.log('Realtime change in credit_reminders:', payload);
+        onDataChange();
+      }
+    )
+    .subscribe((status) => {
+      console.log('Debt POS Realtime channel status:', status);
+    });
 
-        const currentStock = safeNum(latest?.quantity);
-        const restoredStock = currentStock + safeNum(item.quantity);
-
-        await supabase
-          .from('inventory')
-          .update({ quantity: restoredStock })
-          .eq('id', item.inventory_item_id);
-      }));
-    } catch (err) {
-      console.warn('Failed to restore inventory on cancel:', err);
-    }
-  }
-
-  const tablesExist = await checkCreditTablesExist();
-  if (tablesExist && isConfigured) {
-    try {
-      await supabase
-        .from('credit_sales')
-        .update({ status: 'cancelled' })
-        .eq('id', sale.id);
-    } catch (err) {
-      console.warn('Failed to update status to cancelled on server:', err);
-    }
-  }
-
-  // Update local cache
-  const localSales = getLocal<CreditSale>(STORAGE_KEYS.SALES);
-  const updated = localSales.map(s => s.id === sale.id ? { ...s, status: 'cancelled' as const } : s);
-  saveLocal(STORAGE_KEYS.SALES, updated);
-
-  return { success: true, error: null };
-}
-
-// Send / Generate SMS Reminder
-export async function recordAndLaunchSmsReminder(sale: CreditSale): Promise<{ message: string; launched: boolean }> {
-  const dueStatus = calculateDueStatus(sale.due_date);
-  const amountStr = formatTZS(sale.remaining_amount);
-  const dateFormatted = sale.due_date 
-    ? new Date(sale.due_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-    : 'as agreed';
-
-  let message = '';
-  let reminderType: 'due' | 'overdue' = 'due';
-
-  if (dueStatus.category === 'overdue') {
-    reminderType = 'overdue';
-    message = `Dear ${sale.customer_name}, your outstanding balance of ${amountStr} is overdue by ${dueStatus.daysDiff} days. Kindly arrange payment as soon as possible. Thank you.`;
-  } else {
-    reminderType = 'due';
-    message = `Dear ${sale.customer_name}, your outstanding balance is ${amountStr}. Your payment is due on ${dateFormatted}. Kindly arrange payment. Thank you.`;
-  }
-
-  const reminderId = crypto.randomUUID();
-  const sentAt = new Date().toISOString();
-
-  const newReminder: CreditReminder = {
-    id: reminderId,
-    credit_sale_id: sale.id,
-    reminder_type: reminderType,
-    scheduled_date: sale.due_date || new Date().toISOString().slice(0, 10),
-    message,
-    sent_at: sentAt,
-    status: 'sent',
-    created_at: sentAt
+  return () => {
+    supabase.removeChannel(channel);
   };
-
-  // Persist reminder to Supabase
-  const tablesExist = await checkCreditTablesExist();
-  if (tablesExist && isConfigured) {
-    try {
-      await supabase.from('credit_reminders').insert([{
-        id: newReminder.id,
-        credit_sale_id: newReminder.credit_sale_id,
-        reminder_type: newReminder.reminder_type,
-        scheduled_date: newReminder.scheduled_date,
-        message: newReminder.message,
-        sent_at: newReminder.sent_at,
-        status: newReminder.status,
-        created_at: newReminder.created_at
-      }]);
-    } catch (err) {
-      console.warn('Failed to insert reminder into Supabase:', err);
-    }
-  }
-
-  // Update local cache
-  const localReminders = getLocal<CreditReminder>(STORAGE_KEYS.REMINDERS);
-  saveLocal(STORAGE_KEYS.REMINDERS, [newReminder, ...localReminders]);
-
-  // Copy to clipboard
-  try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(message);
-    }
-  } catch {}
-
-  // Launch device SMS app if phone is available
-  let launched = false;
-  if (sale.customer_phone) {
-    const cleanPhone = sale.customer_phone.replace(/[^0-9+]/g, '');
-    const smsUrl = `sms:${cleanPhone}?body=${encodeURIComponent(message)}`;
-    try {
-      window.location.href = smsUrl;
-      launched = true;
-    } catch (e) {
-      console.warn('Failed to launch native SMS:', e);
-    }
-  }
-
-  return { message, launched };
 }
 
 // Compute All Debt Dashboard Metrics
