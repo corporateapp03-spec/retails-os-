@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   LayoutDashboard, 
   Package,
@@ -43,6 +43,44 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const mainScrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-close side menu on navigation when on mobile or tablet
+  const handleNavSelect = useCallback((pageId: Page) => {
+    setActivePage(pageId);
+    if (isMobile) {
+      setIsSidebarOpen(false);
+    }
+  }, [isMobile]);
+
+  // Reset scroll to top cleanly whenever the active page changes
+  useEffect(() => {
+    if (mainScrollRef.current) {
+      mainScrollRef.current.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  }, [activePage]);
+
+  // Close sidebar on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSidebarOpen && isMobile) {
+        setIsSidebarOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSidebarOpen, isMobile]);
+
+  // Lock body scroll when mobile sidebar drawer is open to prevent background bleed-through
+  useEffect(() => {
+    if (isMobile && isSidebarOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isMobile, isSidebarOpen]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -108,24 +146,8 @@ export default function App() {
       }
     });
 
-    // SECURITY: Sign out on tab switch, refresh, or close
-    const handleSecurityExit = () => {
-      supabase.auth.signOut();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        handleSecurityExit();
-      }
-    };
-
-    window.addEventListener('beforeunload', handleSecurityExit);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       subscription.unsubscribe();
-      window.removeEventListener('beforeunload', handleSecurityExit);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -250,11 +272,11 @@ export default function App() {
           </button>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto custom-scrollbar overscroll-contain">
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActivePage(item.id as Page)}
+              onClick={() => handleNavSelect(item.id as Page)}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-300 group relative overflow-hidden",
                 activePage === item.id 
@@ -331,7 +353,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 lg:p-10 relative custom-scrollbar w-full">
+        <div ref={mainScrollRef} className="flex-1 overflow-y-auto p-4 lg:p-10 relative custom-scrollbar w-full overscroll-contain scroll-smooth">
           {/* Background Glows */}
           <div className="absolute top-0 right-0 w-full sm:w-[800px] h-[800px] bg-[#FFD700]/5 blur-[150px] rounded-full pointer-events-none" />
           <div className="absolute bottom-0 left-0 w-full sm:w-[600px] h-[600px] bg-blue-500/5 blur-[150px] rounded-full pointer-events-none" />

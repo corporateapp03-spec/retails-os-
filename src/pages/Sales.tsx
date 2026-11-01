@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useDeferredValue } from 'react';
 import { supabase, isConfigured } from '../lib/supabase';
 import { LedgerEntry, InventoryItem } from '../types';
 import { 
@@ -30,6 +30,7 @@ import Loading from '../components/Loading';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { withLock, executeAtomicTransaction, AtomicStep, safeNum } from '../lib/atomicTransaction';
 
 export default function Sales() {
   const [sales, setSales] = useState<LedgerEntry[]>([]);
@@ -37,6 +38,7 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [reversingId, setReversingId] = useState<string | null>(null);
   const [reversingTransactionId, setReversingTransactionId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -124,54 +126,155 @@ export default function Sales() {
   }
 
   async function handleReverseTransaction(transactionSales: LedgerEntry[], discountEntryId?: string) {
+    if (!transactionSales || transactionSales.length === 0) return;
     if (!window.confirm(`Reverse this entire sale (${transactionSales.length} items)? This will restore stock to inventory and remove the ledger entries.`)) {
       return;
     }
 
     const firstSaleId = transactionSales[0].id;
     setReversingTransactionId(firstSaleId);
+
     try {
-      for (const sale of transactionSales) {
-        // 1. Restore stock if inventory_item_id exists
-        if (sale.inventory_item_id && sale.quantity) {
-          const { data: currentItem, error: fetchError } = await supabase
-            .from('inventory')
-            .select('quantity')
-            .eq('id', sale.inventory_item_id)
-            .single();
+      await withLock(`reverse-tx-${firstSaleId}`, async () => {
+        // 1. Pre-flight check: verify records still exist
+        const saleIds = transactionSales.map(s => s.id);
+        const { data: existingSales, error: checkError } = await supabase
+          .from('ledger')
+          .select('id')
+          .in('id', saleIds);
 
-          if (fetchError) throw fetchError;
-
-          const newQuantity = (currentItem?.quantity || 0) + (safeNum(sale.quantity) || 1);
-          const { error: invError } = await supabase
-            .from('inventory')
-            .update({ quantity: newQuantity })
-            .eq('id', sale.inventory_item_id);
-
-          if (invError) throw invError;
+        if (checkError) throw checkError;
+        if (!existingSales || existingSales.length === 0) {
+          throw new Error('Transaction has already been reversed or no longer exists in Supabase.');
         }
 
-        // 2. Delete from ledger
-        const { error: deleteError } = await supabase
-          .from('ledger')
-          .delete()
-          .eq('id', sale.id);
+        // 2. Batch fetch inventory items
+        const itemIds = Array.from(new Set(transactionSales.map(s => s.inventory_item_id).filter(Boolean))) as string[];
+        const originalInventories = new Map<string, number>();
 
-        if (deleteError) throw deleteError;
-      }
+        if (itemIds.length > 0) {
+          const { data: invItems, error: invFetchError } = await supabase
+            .from('inventory')
+            .select('id, quantity')
+            .in('id', itemIds);
+          if (invFetchError) throw invFetchError;
+          (invItems || []).forEach(item => {
+            originalInventories.set(item.id, safeNum(item.quantity));
+          });
+        }
 
-      // 3. Delete matching discount expense if it exists
-      if (discountEntryId) {
-        const { error: discDeleteError } = await supabase
-          .from('ledger')
-          .delete()
-          .eq('id', discountEntryId);
-        if (discDeleteError) console.warn('Could not delete discount entry:', discDeleteError);
-      }
+        // Calculate quantities to restore per inventory item
+        const restoreMap = new Map<string, number>();
+        transactionSales.forEach(s => {
+          if (s.inventory_item_id) {
+            const qty = safeNum(s.quantity) || 1;
+            restoreMap.set(s.inventory_item_id, (restoreMap.get(s.inventory_item_id) || 0) + qty);
+          }
+        });
 
-      fetchSales();
-    } catch (err) {
-      setError('Reversal Error: ' + (err as any)?.message);
+        // 3. Prepare atomic transaction steps with automatic compensating rollback
+        const steps: AtomicStep[] = [];
+
+        // Inventory update steps
+        for (const [itemId, restoreQty] of restoreMap.entries()) {
+          const currentQty = originalInventories.get(itemId) || 0;
+          const newQty = currentQty + restoreQty;
+
+          steps.push({
+            name: `Restore inventory for item ${itemId} (+${restoreQty})`,
+            execute: async () => {
+              const { error } = await supabase
+                .from('inventory')
+                .update({ quantity: newQty })
+                .eq('id', itemId);
+              if (error) throw error;
+              return { itemId, prevQty: currentQty, newQty };
+            },
+            rollback: async () => {
+              await supabase
+                .from('inventory')
+                .update({ quantity: currentQty })
+                .eq('id', itemId);
+            }
+          });
+        }
+
+        // Discount entry deletion step (if present)
+        if (discountEntryId) {
+          const { data: discData } = await supabase
+            .from('ledger')
+            .select('*')
+            .eq('id', discountEntryId)
+            .single();
+
+          if (discData) {
+            steps.push({
+              name: `Delete discount expense ${discountEntryId}`,
+              execute: async () => {
+                const { error } = await supabase
+                  .from('ledger')
+                  .delete()
+                  .eq('id', discountEntryId);
+                if (error) throw error;
+                return discData;
+              },
+              rollback: async () => {
+                await supabase.from('ledger').insert([discData]);
+              }
+            });
+          }
+        }
+
+        // Delete ledger entries
+        for (const sale of transactionSales) {
+          steps.push({
+            name: `Delete sale ledger entry ${sale.id}`,
+            execute: async () => {
+              const { error } = await supabase
+                .from('ledger')
+                .delete()
+                .eq('id', sale.id);
+              if (error) throw error;
+              return sale;
+            },
+            rollback: async () => {
+              // Strip joined relations before re-inserting
+              const { inventory, ...rawSale } = sale as any;
+              await supabase.from('ledger').insert([rawSale]);
+            }
+          });
+        }
+
+        // Execute all steps atomically with full rollback guarantee
+        const result = await executeAtomicTransaction(`Reverse Transaction ${firstSaleId}`, steps);
+        if (!result.success) {
+          throw result.error || new Error('Transaction reversal failed.');
+        }
+
+        // Synchronize local cache
+        try {
+          const cached = localStorage.getItem('retailos_inventory_cache');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) {
+              const updated = parsed.map((p: any) => {
+                if (restoreMap.has(p.id)) {
+                  return { ...p, quantity: safeNum(p.quantity) + (restoreMap.get(p.id) || 0) };
+                }
+                return p;
+              });
+              localStorage.setItem('retailos_inventory_cache', JSON.stringify(updated));
+            }
+          }
+        } catch (e) {
+          // Non-blocking cache sync
+        }
+
+        await fetchSales();
+      });
+    } catch (err: any) {
+      console.error('Reversal Error:', err);
+      setError('Reversal Error: ' + (err?.message || 'Failed to reverse sale transaction.'));
     } finally {
       setReversingTransactionId(null);
     }
@@ -184,36 +287,85 @@ export default function Sales() {
 
     setReversingId(sale.id);
     try {
-      // 1. Restore stock if inventory_item_id exists
-      if (sale.inventory_item_id && sale.quantity) {
-        const { data: currentItem, error: fetchError } = await supabase
-          .from('inventory')
-          .select('quantity')
-          .eq('id', sale.inventory_item_id)
-          .single();
+      await withLock(`reverse-item-${sale.id}`, async () => {
+        const qtyToRestore = safeNum(sale.quantity) || 1;
+        let originalQty = 0;
 
-        if (fetchError) throw fetchError;
+        if (sale.inventory_item_id) {
+          const { data: curItem, error: fetchErr } = await supabase
+            .from('inventory')
+            .select('quantity')
+            .eq('id', sale.inventory_item_id)
+            .single();
+          if (fetchErr) throw fetchErr;
+          originalQty = safeNum(curItem?.quantity);
+        }
 
-        const newQuantity = (currentItem?.quantity || 0) + sale.quantity;
-        const { error: invError } = await supabase
-          .from('inventory')
-          .update({ quantity: newQuantity })
-          .eq('id', sale.inventory_item_id);
+        const steps: AtomicStep[] = [];
 
-        if (invError) throw invError;
-      }
+        if (sale.inventory_item_id) {
+          const newQty = originalQty + qtyToRestore;
+          steps.push({
+            name: `Restore inventory for item ${sale.inventory_item_id}`,
+            execute: async () => {
+              const { error } = await supabase
+                .from('inventory')
+                .update({ quantity: newQty })
+                .eq('id', sale.inventory_item_id);
+              if (error) throw error;
+            },
+            rollback: async () => {
+              await supabase
+                .from('inventory')
+                .update({ quantity: originalQty })
+                .eq('id', sale.inventory_item_id);
+            }
+          });
+        }
 
-      // 2. Delete from ledger
-      const { error: deleteError } = await supabase
-        .from('ledger')
-        .delete()
-        .eq('id', sale.id);
+        steps.push({
+          name: `Delete ledger entry ${sale.id}`,
+          execute: async () => {
+            const { error } = await supabase
+              .from('ledger')
+              .delete()
+              .eq('id', sale.id);
+            if (error) throw error;
+          },
+          rollback: async () => {
+            const { inventory, ...rawSale } = sale as any;
+            await supabase.from('ledger').insert([rawSale]);
+          }
+        });
 
-      if (deleteError) throw deleteError;
+        const result = await executeAtomicTransaction(`Reverse Item ${sale.id}`, steps);
+        if (!result.success) {
+          throw result.error || new Error('Item reversal failed.');
+        }
 
-      fetchSales();
-    } catch (err) {
-      setError('Reversal Error: ' + (err as any)?.message);
+        // Cache sync
+        if (sale.inventory_item_id) {
+          try {
+            const cached = localStorage.getItem('retailos_inventory_cache');
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed)) {
+                const updated = parsed.map((p: any) =>
+                  p.id === sale.inventory_item_id ? { ...p, quantity: safeNum(p.quantity) + qtyToRestore } : p
+                );
+                localStorage.setItem('retailos_inventory_cache', JSON.stringify(updated));
+              }
+            }
+          } catch (e) {
+            // Non-blocking
+          }
+        }
+
+        await fetchSales();
+      });
+    } catch (err: any) {
+      console.error('Reversal Error:', err);
+      setError('Reversal Error: ' + (err?.message || 'Failed to reverse item.'));
     } finally {
       setReversingId(null);
     }
@@ -230,15 +382,10 @@ export default function Sales() {
       
       setEditingId(null);
       fetchSales();
-    } catch (err) {
-      setError('Update Error: ' + (err as any)?.message);
+    } catch (err: any) {
+      setError('Update Error: ' + (err?.message || 'Failed to update amount.'));
     }
   }
-
-  const safeNum = (val: any) => {
-    const n = parseFloat(val);
-    return isNaN(n) ? 0 : n;
-  };
 
   const availableYears = useMemo(() => {
     const years = new Set<number>([new Date().getFullYear()]);
@@ -872,10 +1019,14 @@ export default function Sales() {
     }
   };
 
-  const filteredSales = sales.filter(sale => 
-    (sale.inventory?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (sale.fund_source || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredSales = useMemo(() => {
+    const term = deferredSearchTerm.trim().toLowerCase();
+    if (!term) return sales;
+    return sales.filter(sale => 
+      (sale.inventory?.name || '').toLowerCase().includes(term) ||
+      (sale.fund_source || '').toLowerCase().includes(term)
+    );
+  }, [sales, deferredSearchTerm]);
 
   // Grouping logic
   const groupedSales = useMemo(() => {

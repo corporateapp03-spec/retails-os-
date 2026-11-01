@@ -77,25 +77,39 @@ export default function ProfitDistribution() {
       if (rawSummaries.length > 0) {
         setSummaries(rawSummaries);
       } else {
-        // Fallback calculation matching dashboard
+        // Fast single-pass fallback calculation matching dashboard
         const safeNum = (val: any) => {
           const n = parseFloat(String(val || 0));
           return isNaN(n) ? 0 : n;
         };
 
-        const categories = Array.from(new Set(rawInventory.map(i => i.category || 'General')));
-        const fallbackSummaries = categories.map(cat => {
-          const catLedger = rawLedger.filter(l => {
-            const item = rawInventory.find(i => i.id === l.inventory_item_id);
-            return (item?.category || 'General') === cat;
-          });
-
-          const revenue = catLedger.filter(l => l.transaction_type === 'sale').reduce((sum, l) => sum + safeNum(l.amount), 0);
-          const expenses = catLedger.filter(l => l.transaction_type === 'expense').reduce((sum, l) => sum + safeNum(l.amount), 0);
-          const profit = revenue - expenses;
-
-          return { total_revenue: revenue, total_profit: profit };
+        const itemCatMap = new Map<string, string>();
+        rawInventory.forEach(i => {
+          if (i.id) itemCatMap.set(i.id, i.category || 'General');
         });
+
+        const catTotals = new Map<string, { revenue: number; expenses: number }>();
+        rawInventory.forEach(i => {
+          const cat = i.category || 'General';
+          if (!catTotals.has(cat)) catTotals.set(cat, { revenue: 0, expenses: 0 });
+        });
+
+        rawLedger.forEach(l => {
+          const cat = (l.inventory_item_id ? itemCatMap.get(l.inventory_item_id) : null) || l.category_id || 'General';
+          let entry = catTotals.get(cat);
+          if (!entry) {
+            entry = { revenue: 0, expenses: 0 };
+            catTotals.set(cat, entry);
+          }
+          const amt = safeNum(l.amount);
+          if (l.transaction_type === 'sale') entry.revenue += amt;
+          else if (l.transaction_type === 'expense') entry.expenses += amt;
+        });
+
+        const fallbackSummaries = Array.from(catTotals.values()).map(m => ({
+          total_revenue: m.revenue,
+          total_profit: m.revenue - m.expenses
+        }));
         setSummaries(fallbackSummaries);
       }
 
@@ -108,13 +122,13 @@ export default function ProfitDistribution() {
     }
   }
 
-  const addLog = (action: string, details: string) => {
+  const addLog = (action: string, details: string, pool?: number) => {
     const newLog: TransactionLog = {
       id: crypto.randomUUID(),
       timestamp: new Date().toLocaleString(),
       action,
       details,
-      profitPool: financials.profitPool
+      profitPool: pool !== undefined ? pool : (financials?.profitPool || 0)
     };
     setLogs(prev => [newLog, ...prev].slice(0, 50)); // Keep last 50
   };
@@ -281,15 +295,12 @@ export default function ProfitDistribution() {
     };
   }, [financials.dailyAvgProfit, riskProfile, repaymentInterval]);
 
-  // Event handlers with logging
+  // Event handlers for split changes
   const handleSplitChange = (type: 'A' | 'B' | 'R', value: number) => {
     const val = Math.max(0, Math.min(100, value));
     if (type === 'A') setPartnerAShare(val);
     if (type === 'B') setPartnerBShare(val);
     if (type === 'R') setReinvestmentShare(val);
-    
-    // Low frequency logging for split changes to avoid spam
-    addLog('Parameter Adjustment', `Updated ${type === 'A' ? 'Partner A' : type === 'B' ? 'Partner B' : 'Reinvestment'} allocation to ${val}%`);
   };
 
   if (loading) return <Loading />;

@@ -24,18 +24,154 @@ import { cn } from '../lib/utils';
 import Loading from '../components/Loading';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { withLock } from '../lib/atomicTransaction';
+
+interface RecordOutflowFormProps {
+  summaries: BusinessSummary[];
+  isSubmitting: boolean;
+  onSubmit: (data: { categoryId: string; isDecapitation: boolean; amount: number; description: string }) => Promise<void>;
+  error: string | null;
+}
+
+// Memoized form component: Isolates typing so entering amount/description does not re-render the heavy bank statement table
+const RecordOutflowForm = React.memo(({ summaries, isSubmitting, onSubmit, error }: RecordOutflowFormProps) => {
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [isDecapitation, setIsDecapitation] = useState(false);
+  const [amountStr, setAmountStr] = useState('');
+  const [description, setDescription] = useState('');
+
+  useEffect(() => {
+    if (!selectedCategoryId && summaries.length > 0) {
+      setSelectedCategoryId(summaries[0].category_id);
+    }
+  }, [summaries, selectedCategoryId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsedAmount = parseFloat(amountStr) || 0;
+    await onSubmit({
+      categoryId: selectedCategoryId,
+      isDecapitation,
+      amount: parsedAmount,
+      description
+    });
+    setAmountStr('');
+    setDescription('');
+  };
+
+  return (
+    <div className="vault-card overflow-hidden">
+      <div className="p-6 bg-[#050505] border-b border-white/5">
+        <h2 className="text-lg font-black flex items-center gap-2 text-white uppercase tracking-tighter">
+          <ArrowDownCircle size={20} className="text-[#FFD700]" />
+          Record Outflow
+        </h2>
+        <p className="text-[10px] text-slate-500 mt-1 uppercase font-black tracking-widest">Mission-Critical Financial Entry</p>
+      </div>
+      
+      <form onSubmit={handleSubmit} className="p-8 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Category</label>
+            <select 
+              value={selectedCategoryId}
+              onChange={(e) => setSelectedCategoryId(e.target.value)}
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none font-black text-white appearance-none"
+            >
+              {summaries.map(s => (
+                <option key={s.category_id} value={s.category_id}>{s.category_name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Transaction Type</label>
+            <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10">
+              <button
+                type="button"
+                onClick={() => setIsDecapitation(false)}
+                className={cn(
+                  "flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest",
+                  !isDecapitation ? "bg-white/10 text-[#FFD700] shadow-sm border border-white/10" : "text-slate-600 hover:text-slate-400"
+                )}
+              >
+                Expense (Profit)
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDecapitation(true)}
+                className={cn(
+                  "flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest",
+                  isDecapitation ? "bg-rose-500/20 text-rose-500 shadow-lg border border-rose-500/30" : "text-slate-600 hover:text-slate-400"
+                )}
+              >
+                Decapitation (Capital)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Amount ($)</label>
+          <input 
+            type="text"
+            inputMode="decimal"
+            value={amountStr}
+            onChange={(e) => {
+              const val = e.target.value.replace(/[^0-9.]/g, '');
+              setAmountStr(val);
+            }}
+            placeholder="0.00"
+            className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-2xl font-black text-white placeholder:text-slate-800"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Description / Reason</label>
+          <textarea 
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. Monthly Rent, Generator Fuel, Capital Withdrawal for Expansion..."
+            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-sm min-h-[100px] resize-none text-white placeholder:text-slate-800"
+          />
+        </div>
+
+        {error && (
+          <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3">
+            <AlertCircle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+            <p className="text-[10px] text-rose-400 font-black leading-relaxed uppercase tracking-tighter">{error}</p>
+          </div>
+        )}
+
+        <button
+          disabled={isSubmitting}
+          className={cn(
+            "w-full py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all uppercase tracking-widest",
+            isDecapitation 
+              ? "bg-rose-500 text-white hover:bg-rose-600 shadow-[0_0_20px_rgba(244,63,94,0.2)]" 
+              : "bg-[#FFD700] text-[#0a0a0a] hover:bg-[#FFD700]/90 shadow-[0_0_20px_rgba(255,215,0,0.2)]"
+          )}
+        >
+          {isSubmitting ? (
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current" />
+          ) : (
+            <>
+              <ShieldCheck size={18} />
+              Commit Transaction
+            </>
+          )}
+        </button>
+      </form>
+    </div>
+  );
+});
 
 export default function Outflow() {
   const [summaries, setSummaries] = useState<BusinessSummary[]>([]);
   const [outflows, setOutflows] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Form state
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
-  const [isDecapitation, setIsDecapitation] = useState(false);
-  const [amount, setAmount] = useState<number>(0);
-  const [description, setDescription] = useState('');
+  const [reversingId, setReversingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [allLedger, setAllLedger] = useState<LedgerEntry[]>([]);
@@ -89,7 +225,6 @@ export default function Outflow() {
 
       if (rawSummaries.length > 0) {
         setSummaries(rawSummaries);
-        if (!selectedCategoryId) setSelectedCategoryId(rawSummaries[0].category_id);
       } else {
         // Fallback calculation
         const safeNum = (val: any) => {
@@ -120,9 +255,6 @@ export default function Outflow() {
           };
         });
         setSummaries(fallbackSummaries);
-        if (!selectedCategoryId && fallbackSummaries.length > 0) {
-          setSelectedCategoryId(fallbackSummaries[0].category_id);
-        }
       }
     } catch (err: any) {
       console.error('Error fetching outflow data:', err);
@@ -136,10 +268,9 @@ export default function Outflow() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedCategoryId || amount <= 0 || !description.trim()) {
-      alert('Please fill all fields correctly. Amount must be positive.');
+  async function handleRecordOutflow(data: { categoryId: string; isDecapitation: boolean; amount: number; description: string }) {
+    if (!data.categoryId || data.amount <= 0 || !data.description.trim()) {
+      setError('Please fill all fields correctly. Amount must be positive.');
       return;
     }
 
@@ -147,48 +278,46 @@ export default function Outflow() {
     setError(null);
 
     try {
-      // 1. Server-Side Trust: Fetch current balance before save
-      const { data: currentSummary, error: balanceError } = await supabase
-        .from('business_summary')
-        .select('*')
-        .eq('category_id', selectedCategoryId)
-        .single();
+      await withLock('outflow-submit', async () => {
+        // 1. Server-Side Trust: Fetch current balance before save
+        const { data: currentSummary, error: balanceError } = await supabase
+          .from('business_summary')
+          .select('*')
+          .eq('category_id', data.categoryId)
+          .single();
 
-      if (balanceError) throw balanceError;
+        if (balanceError) throw balanceError;
 
-      const type = isDecapitation ? 'CAPITAL_WITHDRAWAL' : 'expense';
-      const fundSource = isDecapitation ? 'CAPITAL' : 'PROFIT';
-      
-      // Integrity Check
-      const availableFunds = isDecapitation 
-        ? (currentSummary.capital_health || 0) 
-        : (currentSummary.total_profit || 0);
+        const type = data.isDecapitation ? 'CAPITAL_WITHDRAWAL' : 'expense';
+        const fundSource = data.isDecapitation ? 'CAPITAL' : 'PROFIT';
+        
+        // Integrity Check
+        const availableFunds = data.isDecapitation 
+          ? (currentSummary.capital_health || 0) 
+          : (currentSummary.total_profit || 0);
 
-      if (amount > availableFunds) {
-        throw new Error(`Insufficient funds in ${fundSource}. Available: $${availableFunds.toLocaleString()}`);
-      }
+        if (data.amount > availableFunds) {
+          throw new Error(`Insufficient funds in ${fundSource}. Available: $${availableFunds.toLocaleString()}`);
+        }
 
-      // 2. Atomic Transaction: Insert into ledger
-      const { error: insertError } = await supabase
-        .from('ledger')
-        .insert([{
-          category_id: selectedCategoryId,
-          amount: amount,
-          transaction_type: type,
-          fund_source: fundSource,
-          description: description.trim(),
-          created_at: new Date().toISOString()
-        }]);
+        // 2. Atomic Transaction: Insert into ledger
+        const { error: insertError } = await supabase
+          .from('ledger')
+          .insert([{
+            category_id: data.categoryId,
+            amount: data.amount,
+            transaction_type: type,
+            fund_source: fundSource,
+            description: data.description.trim(),
+            created_at: new Date().toISOString()
+          }]);
 
-      if (insertError) throw insertError;
+        if (insertError) throw insertError;
 
-      // Reset form and refresh
-      setAmount(0);
-      setDescription('');
-      fetchData();
-      alert('Outflow recorded successfully.');
-    } catch (err) {
-      setError((err as any).message);
+        await fetchData();
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Failed to record outflow.');
     } finally {
       setIsSubmitting(false);
     }
@@ -197,16 +326,21 @@ export default function Outflow() {
   async function handleReverse(id: string) {
     if (!window.confirm('Reverse this transaction? This will restore the category health/profit immediately.')) return;
     
+    setReversingId(id);
     try {
-      const { error: deleteError } = await supabase
-        .from('ledger')
-        .delete()
-        .eq('id', id);
+      await withLock(`outflow-reverse-${id}`, async () => {
+        const { error: deleteError } = await supabase
+          .from('ledger')
+          .delete()
+          .eq('id', id);
 
-      if (deleteError) throw deleteError;
-      fetchData();
-    } catch (err) {
-      setError('Reversal Failed: ' + (err as any).message);
+        if (deleteError) throw deleteError;
+        await fetchData();
+      });
+    } catch (err: any) {
+      setError('Reversal Failed: ' + (err?.message || 'Failed to reverse outflow.'));
+    } finally {
+      setReversingId(null);
     }
   }
 
@@ -792,107 +926,13 @@ export default function Outflow() {
       </div>
 
       <div className="space-y-8">
-        {/* Entry Form */}
-        <div className="vault-card overflow-hidden">
-          <div className="p-6 bg-[#050505] border-b border-white/5">
-            <h2 className="text-lg font-black flex items-center gap-2 text-white uppercase tracking-tighter">
-              <ArrowDownCircle size={20} className="text-[#FFD700]" />
-              Record Outflow
-            </h2>
-            <p className="text-[10px] text-slate-500 mt-1 uppercase font-black tracking-widest">Mission-Critical Financial Entry</p>
-          </div>
-          
-          <form onSubmit={handleSubmit} className="p-8 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Category</label>
-                <select 
-                  value={selectedCategoryId}
-                  onChange={(e) => setSelectedCategoryId(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none font-black text-white appearance-none"
-                >
-                  {summaries.map(s => (
-                    <option key={s.category_id} value={s.category_id}>{s.category_name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Transaction Type</label>
-                <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => setIsDecapitation(false)}
-                    className={cn(
-                      "flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest",
-                      !isDecapitation ? "bg-white/10 text-[#FFD700] shadow-sm border border-white/10" : "text-slate-600 hover:text-slate-400"
-                    )}
-                  >
-                    Expense (Profit)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsDecapitation(true)}
-                    className={cn(
-                      "flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest",
-                      isDecapitation ? "bg-rose-500/20 text-rose-500 shadow-lg border border-rose-500/30" : "text-slate-600 hover:text-slate-400"
-                    )}
-                  >
-                    Decapitation (Capital)
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Amount ($)</label>
-              <input 
-                type="number"
-                step="0.01"
-                value={amount || ''}
-                onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-                placeholder="0.00"
-                className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-2xl font-black text-white placeholder:text-slate-800"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Description / Reason</label>
-              <textarea 
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Monthly Rent, Generator Fuel, Capital Withdrawal for Expansion..."
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl focus:border-[#FFD700]/50 outline-none text-sm min-h-[100px] resize-none text-white placeholder:text-slate-800"
-              />
-            </div>
-
-            {error && (
-              <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3">
-                <AlertCircle size={18} className="text-rose-500 shrink-0 mt-0.5" />
-                <p className="text-[10px] text-rose-400 font-black leading-relaxed uppercase tracking-tighter">{error}</p>
-              </div>
-            )}
-
-            <button
-              disabled={isSubmitting}
-              className={cn(
-                "w-full py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all uppercase tracking-widest",
-                isDecapitation 
-                  ? "bg-rose-500 text-white hover:bg-rose-600 shadow-[0_0_20px_rgba(244,63,94,0.2)]" 
-                  : "bg-[#FFD700] text-[#0a0a0a] hover:bg-[#FFD700]/90 shadow-[0_0_20px_rgba(255,215,0,0.2)]"
-              )}
-            >
-              {isSubmitting ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current" />
-              ) : (
-                <>
-                  <ShieldCheck size={18} />
-                  Commit Transaction
-                </>
-              )}
-            </button>
-          </form>
-        </div>
+        {/* Entry Form (Memoized to prevent table re-renders on typing) */}
+        <RecordOutflowForm 
+          summaries={summaries} 
+          isSubmitting={isSubmitting} 
+          onSubmit={handleRecordOutflow} 
+          error={error} 
+        />
 
         {/* Outflow Archive */}
         <div className="space-y-6">
@@ -990,10 +1030,21 @@ export default function Outflow() {
                               <Edit3 size={14} />
                             </button>
                             <button 
+                              disabled={reversingId === item.id}
                               onClick={() => handleReverse(item.id)}
-                              className="p-2 text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
+                              className={cn(
+                                "p-2 rounded-xl transition-all",
+                                reversingId === item.id 
+                                  ? "text-rose-500 bg-rose-500/10 cursor-not-allowed" 
+                                  : "text-slate-600 hover:text-rose-500 hover:bg-rose-500/10"
+                              )}
+                              title="Reverse Outflow"
                             >
-                              <Trash2 size={14} />
+                              {reversingId === item.id ? (
+                                <Loader2 size={14} className="animate-spin text-rose-500" />
+                              ) : (
+                                <Trash2 size={14} />
+                              )}
                             </button>
                           </div>
                         </td>

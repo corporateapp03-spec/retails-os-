@@ -40,28 +40,48 @@ export default function Dashboard() {
             return isNaN(n) ? 0 : n;
           };
 
-          const categories = Array.from(new Set(rawInventory.map(i => i.category || 'General')));
-          const fallbackSummaries: BusinessSummary[] = categories.map(cat => {
-            const catLedger = rawLedger.filter(l => {
-              const item = rawInventory.find(i => i.id === l.inventory_item_id);
-              return (item?.category || 'General') === cat;
-            });
-
-            const revenue = catLedger.filter(l => l.transaction_type === 'sale').reduce((sum, l) => sum + safeNum(l.amount), 0);
-            const expenses = catLedger.filter(l => l.transaction_type === 'expense').reduce((sum, l) => sum + safeNum(l.amount), 0);
-            const profit = revenue - expenses;
-            const capital = catLedger.filter(l => l.transaction_type === 'capital_withdrawal').reduce((sum, l) => sum + safeNum(l.amount), 0);
-
-            return {
-              category_id: cat,
-              category_name: cat,
-              total_revenue: revenue,
-              total_expenses: expenses,
-              total_profit: profit,
-              capital_health: 10000 - capital, // Assuming 10k initial capital for fallback
-              last_updated: new Date().toISOString()
-            };
+          // Fast O(1) item category lookup map and single-pass aggregation
+          const itemCatMap = new Map<string, string>();
+          rawInventory.forEach(i => {
+            if (i.id) itemCatMap.set(i.id, i.category || 'General');
           });
+
+          const categoryAccumulator = new Map<string, { revenue: number; expenses: number; capital: number }>();
+          
+          rawInventory.forEach(i => {
+            const cat = i.category || 'General';
+            if (!categoryAccumulator.has(cat)) {
+              categoryAccumulator.set(cat, { revenue: 0, expenses: 0, capital: 0 });
+            }
+          });
+
+          rawLedger.forEach(l => {
+            const cat = (l.inventory_item_id ? itemCatMap.get(l.inventory_item_id) : null) || l.category_id || 'General';
+            let entry = categoryAccumulator.get(cat);
+            if (!entry) {
+              entry = { revenue: 0, expenses: 0, capital: 0 };
+              categoryAccumulator.set(cat, entry);
+            }
+            const amount = safeNum(l.amount);
+            if (l.transaction_type === 'sale') {
+              entry.revenue += amount;
+            } else if (l.transaction_type === 'expense') {
+              entry.expenses += amount;
+            } else if (l.transaction_type === 'capital_withdrawal') {
+              entry.capital += amount;
+            }
+          });
+
+          const fallbackSummaries: BusinessSummary[] = Array.from(categoryAccumulator.entries()).map(([cat, metrics]) => ({
+            category_id: cat,
+            category_name: cat,
+            total_revenue: metrics.revenue,
+            total_expenses: metrics.expenses,
+            total_profit: metrics.revenue - metrics.expenses,
+            capital_health: 10000 - metrics.capital,
+            last_updated: new Date().toISOString()
+          }));
+
           setSummaries(fallbackSummaries);
         }
       } catch (err: any) {

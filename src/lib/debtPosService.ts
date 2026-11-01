@@ -428,7 +428,9 @@ export async function recordCreditPayment(
     .eq('id', sale.id);
 
   if (updateErr) {
-    console.error('Supabase credit_sales update error:', updateErr);
+    console.error('Supabase credit_sales update error, executing compensating rollback:', updateErr);
+    // Compensating rollback: delete inserted payment
+    await supabase.from('credit_payments').delete().eq('id', newPayment.id);
     if (updateErr.code === '42501') {
       return { payment: null as any, updatedSale: sale, error: 'Permission denied (42501): Authenticated user session required to update credit sale balance.' };
     }
@@ -469,8 +471,18 @@ export async function cancelCreditSale(sale: CreditSale): Promise<{ success: boo
     return { success: false, error: 'Cannot cancel a credit sale that has recorded payments' };
   }
 
-  // Restore inventory using established pattern from Sales.tsx
-  if (sale.items) {
+  // 1. Update status to 'cancelled' in Supabase first
+  const { error: cancelErr } = await supabase
+    .from('credit_sales')
+    .update({ status: 'cancelled' })
+    .eq('id', sale.id);
+
+  if (cancelErr) {
+    return { success: false, error: cancelErr.message || 'Failed to cancel credit sale in Supabase.' };
+  }
+
+  // 2. Restore inventory using established pattern
+  if (sale.items && sale.items.length > 0) {
     try {
       await Promise.all(sale.items.map(async (item) => {
         const { data: latest } = await supabase
@@ -490,16 +502,6 @@ export async function cancelCreditSale(sale: CreditSale): Promise<{ success: boo
     } catch (err) {
       console.warn('Failed to restore inventory on cancel:', err);
     }
-  }
-
-  // Update status to 'cancelled' in Supabase
-  const { error: cancelErr } = await supabase
-    .from('credit_sales')
-    .update({ status: 'cancelled' })
-    .eq('id', sale.id);
-
-  if (cancelErr) {
-    return { success: false, error: cancelErr.message || 'Failed to cancel credit sale in Supabase.' };
   }
 
   return { success: true, error: null };

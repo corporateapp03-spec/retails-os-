@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useDeferredValue } from 'react';
 import { supabase, isConfigured } from '../lib/supabase';
 import { InventoryItem, LedgerEntry } from '../types';
 import { 
@@ -40,12 +40,233 @@ const CATEGORY_MAP: Record<number, string> = {
   3: 'Electrical Spares'
 };
 
+interface AssetModalProps {
+  isOpen: boolean;
+  editingItem: InventoryItem | null;
+  onClose: () => void;
+  onSave: (data: any) => Promise<void>;
+}
+
+// Memoized AssetModal: Isolates form typing state so typing never re-renders the heavy inventory table
+const AssetModal = React.memo(({ isOpen, editingItem, onClose, onSave }: AssetModalProps) => {
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [categoryId, setCategoryId] = useState(1);
+  const [costPrice, setCostPrice] = useState('');
+  const [sellingPrice, setSellingPrice] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [minStockLevel, setMinStockLevel] = useState('5');
+  const [active, setActive] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (editingItem) {
+      setName(editingItem.name || '');
+      setCode(editingItem.code || '');
+      setCategoryId(editingItem.category_id || 1);
+      setCostPrice(editingItem.cost_price !== undefined ? String(editingItem.cost_price) : '');
+      setSellingPrice(editingItem.selling_price !== undefined ? String(editingItem.selling_price) : '');
+      setQuantity(editingItem.quantity !== undefined ? String(editingItem.quantity) : '');
+      setMinStockLevel(editingItem.min_stock_level !== undefined ? String(editingItem.min_stock_level) : '5');
+      setActive(editingItem.active ?? true);
+    } else {
+      setName('');
+      setCode('');
+      setCategoryId(1);
+      setCostPrice('');
+      setSellingPrice('');
+      setQuantity('');
+      setMinStockLevel('5');
+      setActive(true);
+    }
+  }, [editingItem, isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        code: code.trim(),
+        category: CATEGORY_MAP[categoryId] || 'Other',
+        cost_price: parseFloat(costPrice) || 0,
+        selling_price: parseFloat(sellingPrice) || 0,
+        category_id: categoryId,
+        min_stock_level: parseInt(minStockLevel) || 5,
+        quantity: parseInt(quantity) || 0,
+        active
+      };
+      await onSave(payload);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[130] flex justify-end">
+      <div className="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-md" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-[#0a0a0a] border-l border-white/10 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+        <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/5">
+          <div>
+            <h2 className="text-xl font-black text-[#FFD700] uppercase tracking-tighter">
+              {editingItem ? 'Modify Asset' : 'Register New Asset'}
+            </h2>
+            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mt-1">
+              Vault Entry Protocol
+            </p>
+          </div>
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="p-2 hover:bg-white/5 rounded-full transition-colors text-slate-500 hover:text-[#FFD700]"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Product Name</label>
+            <input 
+              required
+              type="text" 
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-bold text-white placeholder:text-slate-800"
+              placeholder="Official Product Name"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Database Code (SKU)</label>
+            <input 
+              required
+              type="text" 
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-mono text-sm text-white placeholder:text-slate-800"
+              placeholder="UNIQUE_CODE_001"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cost Price ($)</label>
+              <input 
+                required
+                type="text" 
+                inputMode="decimal"
+                value={costPrice}
+                onChange={e => {
+                  const val = e.target.value.replace(/[^0-9.]/g, '');
+                  setCostPrice(val);
+                }}
+                placeholder="0.00"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-bold text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Selling Price ($)</label>
+              <input 
+                required
+                type="text" 
+                inputMode="decimal"
+                value={sellingPrice}
+                onChange={e => {
+                  const val = e.target.value.replace(/[^0-9.]/g, '');
+                  setSellingPrice(val);
+                }}
+                placeholder="0.00"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-black text-[#FFD700]"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Category Mapping</label>
+            <select 
+              required
+              value={categoryId}
+              onChange={e => setCategoryId(parseInt(e.target.value) || 1)}
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none appearance-none font-black text-white"
+            >
+              <option value={1}>1 - Oils</option>
+              <option value={2}>2 - Spare Parts</option>
+              <option value={3}>3 - Electrical Spares</option>
+            </select>
+            <p className="text-[10px] text-slate-600 italic">Maps to Integer ID and Text Category in table.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quantity</label>
+              <input 
+                required
+                type="number" 
+                value={quantity}
+                onChange={e => setQuantity(e.target.value)}
+                placeholder="0"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none text-white font-bold"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Min Stock Level</label>
+              <input 
+                required
+                type="number" 
+                value={minStockLevel}
+                onChange={e => setMinStockLevel(e.target.value)}
+                placeholder="5"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none text-white font-bold"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10">
+            <input 
+              type="checkbox"
+              id="active-checkbox"
+              checked={active}
+              onChange={e => setActive(e.target.checked)}
+              className="w-5 h-5 rounded border-white/10 bg-transparent text-[#FFD700] focus:ring-[#FFD700]"
+            />
+            <label htmlFor="active-checkbox" className="text-xs font-black text-slate-400 cursor-pointer uppercase tracking-tighter">
+              Active in Inventory
+            </label>
+          </div>
+        </form>
+
+        <div className="p-8 border-t border-white/10 bg-white/5 flex gap-4">
+          <button 
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-4 border border-white/10 rounded-2xl text-xs font-black text-slate-500 hover:bg-white/5 transition-all uppercase tracking-tighter"
+          >
+            Discard
+          </button>
+          <button 
+            type="button"
+            disabled={isSubmitting}
+            onClick={handleSubmit}
+            className="flex-1 px-4 py-4 bg-[#FFD700] text-[#0a0a0a] rounded-2xl text-xs font-black hover:bg-[#FFD700]/90 transition-all shadow-[0_0_20px_rgba(255,215,0,0.2)] uppercase tracking-tighter disabled:opacity-50"
+          >
+            {isSubmitting ? 'Saving...' : editingItem ? 'Execute Update' : 'Execute Insert'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export default function Inventory() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [sales, setSales] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [stockFilter, setStockFilter] = useState<'all' | 'reorder' | 'dead' | 'active'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
@@ -53,52 +274,10 @@ export default function Inventory() {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [isDownloadingCsv, setIsDownloadingCsv] = useState(false);
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    code: '',
-    category: 'Oils',
-    cost_price: 0,
-    selling_price: 0,
-    category_id: 1,
-    min_stock_level: 5,
-    quantity: 0,
-    active: true
-  });
 
   useEffect(() => {
     fetchData();
   }, []);
-
-  useEffect(() => {
-    if (editingItem) {
-      setFormData({
-        name: editingItem?.name || '',
-        code: editingItem?.code || '',
-        category: editingItem?.category || 'Oils',
-        cost_price: editingItem?.cost_price || 0,
-        selling_price: editingItem?.selling_price || 0,
-        category_id: editingItem?.category_id || 1,
-        min_stock_level: editingItem?.min_stock_level || 5,
-        quantity: editingItem?.quantity || 0,
-        active: editingItem?.active ?? true
-      });
-      setIsModalOpen(true);
-    } else {
-      setFormData({
-        name: '',
-        code: '',
-        category: 'Oils',
-        cost_price: 0,
-        selling_price: 0,
-        category_id: 1,
-        min_stock_level: 5,
-        quantity: 0,
-        active: true
-      });
-    }
-  }, [editingItem]);
 
   const safeNum = (val: any) => {
     const n = parseFloat(val);
@@ -294,11 +473,12 @@ export default function Inventory() {
 
   // Filtering based on search and active tab
   const filteredItems = useMemo(() => {
+    const term = (deferredSearchTerm || '').trim().toLowerCase();
     return stockAnalytics.filter(item => {
-      const matchesSearch = 
-        (item?.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-        (item?.code || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-        (CATEGORY_MAP[item.category_id] || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+      const matchesSearch = !term ||
+        (item?.name || '').toLowerCase().includes(term) ||
+        (item?.code || '').toLowerCase().includes(term) ||
+        (CATEGORY_MAP[item.category_id] || '').toLowerCase().includes(term);
       
       if (!matchesSearch) return false;
 
@@ -307,7 +487,7 @@ export default function Inventory() {
       if (stockFilter === 'active') return item.isActiveStock;
       return true;
     });
-  }, [stockAnalytics, searchTerm, stockFilter]);
+  }, [stockAnalytics, deferredSearchTerm, stockFilter]);
 
   // Download Comprehensive PDF Report
   const downloadInventoryPDF = () => {
@@ -637,10 +817,8 @@ export default function Inventory() {
     }
   };
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    
-    if (!formData.category_id) {
+  async function handleSaveAsset(data: any) {
+    if (!data.category_id) {
       setError('Category ID is required for database mapping.');
       return;
     }
@@ -649,7 +827,7 @@ export default function Inventory() {
       if (editingItem) {
         const { error: updateError } = await supabase
           .from('inventory')
-          .update(formData)
+          .update(data)
           .eq('id', editingItem.id);
         
         if (updateError) throw updateError;
@@ -659,7 +837,7 @@ export default function Inventory() {
         
         const { error: insertError } = await supabase
           .from('inventory')
-          .insert([{ ...formData, created_at: timeString }]);
+          .insert([{ ...data, created_at: timeString }]);
         
         if (insertError) throw insertError;
       }
@@ -1758,175 +1936,15 @@ export default function Inventory() {
       )}
 
       {/* CRUD Modal: Register or Modify Asset (Preserved with 100% integrity) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[130] flex justify-end">
-          <div className="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-md" onClick={() => {
-            setIsModalOpen(false);
-            setEditingItem(null);
-          }} />
-          <div className="relative w-full max-w-md bg-[#0a0a0a] border-l border-white/10 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/5">
-              <div>
-                <h2 className="text-xl font-black text-[#FFD700] uppercase tracking-tighter">
-                  {editingItem ? 'Modify Asset' : 'Register New Asset'}
-                </h2>
-                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mt-1">
-                  Vault Entry Protocol
-                </p>
-              </div>
-              <button 
-                onClick={() => {
-                  setIsModalOpen(false);
-                  setEditingItem(null);
-                }} 
-                className="p-2 hover:bg-white/5 rounded-full transition-colors text-slate-500 hover:text-[#FFD700]"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Product Name</label>
-                <input 
-                  required
-                  type="text" 
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-bold text-white placeholder:text-slate-800"
-                  placeholder="Official Product Name"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Database Code (SKU)</label>
-                <input 
-                  required
-                  type="text" 
-                  value={formData.code}
-                  onChange={e => setFormData({...formData, code: e.target.value})}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-mono text-sm text-white placeholder:text-slate-800"
-                  placeholder="UNIQUE_CODE_001"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cost Price ($)</label>
-                  <input 
-                    required
-                    type="number" 
-                    step="0.01"
-                    value={formData.cost_price || 0}
-                    onChange={e => {
-                      const val = parseFloat(e.target.value);
-                      setFormData({...formData, cost_price: isNaN(val) ? 0 : val});
-                    }}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-bold text-white"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Selling Price ($)</label>
-                  <input 
-                    required
-                    type="number" 
-                    step="0.01"
-                    value={formData.selling_price || 0}
-                    onChange={e => {
-                      const val = parseFloat(e.target.value);
-                      setFormData({...formData, selling_price: isNaN(val) ? 0 : val});
-                    }}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none font-black text-[#FFD700]"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Category Mapping</label>
-                <select 
-                  required
-                  value={formData.category_id}
-                  onChange={e => {
-                    const id = parseInt(e.target.value);
-                    setFormData({
-                      ...formData, 
-                      category_id: id,
-                      category: CATEGORY_MAP[id] || 'Other'
-                    });
-                  }}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none appearance-none font-black text-white"
-                >
-                  <option value={1}>1 - Oils</option>
-                  <option value={2}>2 - Spare Parts</option>
-                  <option value={3}>3 - Electrical Spares</option>
-                </select>
-                <p className="text-[10px] text-slate-600 italic">Maps to Integer ID and Text Category in table.</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quantity</label>
-                  <input 
-                    required
-                    type="number" 
-                    value={formData.quantity || 0}
-                    onChange={e => {
-                      const val = parseInt(e.target.value);
-                      setFormData({...formData, quantity: isNaN(val) ? 0 : val});
-                    }}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none text-white font-bold"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Min Stock Level</label>
-                  <input 
-                    required
-                    type="number" 
-                    value={formData.min_stock_level || 0}
-                    onChange={e => {
-                      const val = parseInt(e.target.value);
-                      setFormData({...formData, min_stock_level: isNaN(val) ? 0 : val});
-                    }}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-[#FFD700]/50 outline-none text-white font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10">
-                <input 
-                  type="checkbox"
-                  id="active-checkbox"
-                  checked={formData.active}
-                  onChange={e => setFormData({...formData, active: e.target.checked})}
-                  className="w-5 h-5 rounded border-white/10 bg-transparent text-[#FFD700] focus:ring-[#FFD700]"
-                />
-                <label htmlFor="active-checkbox" className="text-xs font-black text-slate-400 cursor-pointer uppercase tracking-tighter">
-                  Active in Inventory
-                </label>
-              </div>
-            </form>
-
-            <div className="p-8 border-t border-white/10 bg-white/5 flex gap-4">
-              <button 
-                type="button"
-                onClick={() => {
-                  setIsModalOpen(false);
-                  setEditingItem(null);
-                }}
-                className="flex-1 px-4 py-4 border border-white/10 rounded-2xl text-xs font-black text-slate-500 hover:bg-white/5 transition-all uppercase tracking-tighter"
-              >
-                Discard
-              </button>
-              <button 
-                onClick={handleSubmit}
-                className="flex-1 px-4 py-4 bg-[#FFD700] text-[#0a0a0a] rounded-2xl text-xs font-black hover:bg-[#FFD700]/90 transition-all shadow-[0_0_20px_rgba(255,215,0,0.2)] uppercase tracking-tighter"
-              >
-                {editingItem ? 'Execute Update' : 'Execute Insert'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AssetModal 
+        isOpen={isModalOpen} 
+        editingItem={editingItem} 
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingItem(null);
+        }} 
+        onSave={handleSaveAsset} 
+      />
     </div>
   );
 }

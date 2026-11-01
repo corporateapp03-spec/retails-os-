@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, useDeferredValue } from 'react';
 import { supabase, isConfigured } from '../lib/supabase';
 import { InventoryItem } from '../types';
 import { 
@@ -13,20 +13,21 @@ import {
   RefreshCw, 
   Minus, 
   Plus, 
-  X,
-  AlertCircle,
-  ShieldCheck,
-  User,
-  Users,
-  Settings as SettingsIcon,
-  Tag,
-  Percent,
-  Lock,
-  Unlock,
-  Printer,
-  FileText
+  X, 
+  AlertCircle, 
+  ShieldCheck, 
+  User, 
+  Users, 
+  Settings as SettingsIcon, 
+  Tag, 
+  Percent, 
+  Lock, 
+  Unlock, 
+  Printer, 
+  FileText 
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { executeAtomicTransaction, AtomicStep } from '../lib/atomicTransaction';
 
 const CATEGORY_MAP: Record<number, string> = {
   1: 'Oils',
@@ -137,8 +138,51 @@ const ProductItem = React.memo(({ item, onAdd }: { item: InventoryItem, onAdd: (
   );
 });
 
+// Memoized Product Table Row for desktop table
+const ProductTableRow = React.memo(({ item, onAdd }: { item: InventoryItem; onAdd: (item: InventoryItem) => void }) => {
+  const isOutOfStock = item.quantity <= 0;
+  const isInactive = item.active === false || String(item.active).toLowerCase() === 'false';
+
+  return (
+    <tr 
+      onClick={() => !isOutOfStock && onAdd(item)}
+      className={cn(
+        "hover:bg-[#FFD700]/10 cursor-pointer transition-all duration-150 group",
+        isOutOfStock && "opacity-30 grayscale cursor-not-allowed"
+      )}
+    >
+      <td className="px-4 py-2.5">
+         <div className="flex items-center gap-2">
+           <p className="font-black text-white text-xs group-hover:text-[#FFD700] transition-colors">{item.name}</p>
+           {isInactive && (
+             <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-500 rounded text-[7px] font-black uppercase tracking-widest leading-none border border-rose-500/20">
+               Inactive
+             </span>
+           )}
+         </div>
+        <p className="text-[9px] text-slate-500 uppercase font-black tracking-wider mt-0.5">
+          {CATEGORY_MAP[item.category_id] || item.category || 'General'}
+        </p>
+      </td>
+      <td className="px-4 py-2.5 font-mono text-xs text-slate-400 group-hover:text-white transition-colors">{item.code}</td>
+      <td className="px-4 py-2.5">
+        <span className={cn(
+          "text-[9px] font-black uppercase px-2 py-0.5 rounded-lg",
+          item.quantity > 5 ? "text-emerald-400 bg-emerald-500/5 border border-emerald-500/10" : "text-rose-400 bg-rose-500/5 border border-rose-500/10"
+        )}>
+          {item.quantity} units
+        </span>
+      </td>
+      <td className="px-4 py-2.5 text-right font-black text-[#FFD700] text-xs">
+        ${safeNum(item.selling_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+      </td>
+    </tr>
+  );
+});
+
 export default function POS() {
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [allProducts, setAllProducts] = useState<InventoryItem[]>([]);
   const [cart, setCart] = useState<{item: InventoryItem, quantity: number, customPrice?: number}[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -183,6 +227,7 @@ export default function POS() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isSyncingRef = useRef(false);
+  const lastSyncAttemptRef = useRef<number>(0);
 
   // Focus search on load
   useEffect(() => {
@@ -309,14 +354,16 @@ export default function POS() {
     fetchProducts();
   }, [fetchProducts]);
 
-  // High-performance local search checking Name, SKU/Code, Category
+  // High-performance local search checking Name, SKU/Code, Category with deferred query
   const filteredProducts = useMemo(() => {
     try {
-      const trimmedQuery = searchQuery.trim().toLowerCase();
+      const trimmedQuery = deferredSearchQuery.trim().toLowerCase();
       if (!trimmedQuery) {
         return allProducts.slice(0, 100); // Top 100 products for super fast responsive list
       }
       const terms = trimmedQuery.split(/\s+/).filter(Boolean);
+      // Precompute stripped search query once outside the per-item loop
+      const strippedQuery = trimmedQuery.replace(/[^a-zA-Z0-9]/g, '');
       
       return allProducts.filter(p => {
         if (!p) return false;
@@ -341,9 +388,10 @@ export default function POS() {
         if (fullString.includes(trimmedQuery)) return true;
 
         // 3. Normalized slug/code matching fallback
-        const strippedCode = code.replace(/[^a-zA-Z0-9]/g, '');
-        const strippedQuery = trimmedQuery.replace(/[^a-zA-Z0-9]/g, '');
-        if (strippedQuery && strippedCode.includes(strippedQuery)) return true;
+        if (strippedQuery) {
+          const strippedCode = code.replace(/[^a-zA-Z0-9]/g, '');
+          if (strippedCode.includes(strippedQuery)) return true;
+        }
 
         return false;
       }).slice(0, 80);
@@ -351,19 +399,31 @@ export default function POS() {
       console.error('Error in instant search:', e);
       return allProducts.slice(0, 50);
     }
-  }, [searchQuery, allProducts]);
+  }, [deferredSearchQuery, allProducts]);
 
-  // Background Sync Trigger
+  // Background Sync Trigger with cooldown protection to eliminate tight CPU freezing loops
   useEffect(() => {
-    if (isOnline && queuedSales.length > 0 && !isSyncing && !isSyncingRef.current) {
-      syncQueuedSales();
-    }
-  }, [isOnline, queuedSales]);
+    if (!isOnline || queuedSales.length === 0 || isSyncing || isSyncingRef.current) return;
 
-  // Synchronize queued sales on server
+    const now = Date.now();
+    const timeSinceLast = now - lastSyncAttemptRef.current;
+    if (timeSinceLast < 10000) {
+      const timer = setTimeout(() => {
+        if (isOnline && queuedSales.length > 0 && !isSyncing && !isSyncingRef.current) {
+          syncQueuedSales();
+        }
+      }, 10000 - timeSinceLast);
+      return () => clearTimeout(timer);
+    }
+
+    syncQueuedSales();
+  }, [isOnline, queuedSales.length, isSyncing]);
+
+  // Synchronize queued sales on server with atomic integrity
   const syncQueuedSales = useCallback(async () => {
     if (isSyncing || isSyncingRef.current) return;
     isSyncingRef.current = true;
+    lastSyncAttemptRef.current = Date.now();
     setIsSyncing(true);
     
     try {
@@ -405,11 +465,29 @@ export default function POS() {
       created_at: sale.timestamp
     }));
 
-    // 2. Insert entries to Ledger
-    const { error: ledgerError } = await supabase.from('ledger').insert(entries);
-    if (ledgerError) throw ledgerError;
+    // Build atomic transaction steps with automatic compensating rollback
+    const steps: AtomicStep[] = [];
+    let insertedLedgerIds: string[] = [];
+    let insertedDiscountId: string | null = null;
 
-    // 3. Post Discount total as one Expense categorized dynamically under highest qty item category
+    // Step 1: Insert ledger entries
+    steps.push({
+      name: `Insert ${entries.length} sale ledger entries`,
+      execute: async () => {
+        const { data, error } = await supabase.from('ledger').insert(entries).select('id');
+        if (error) throw error;
+        insertedLedgerIds = (data || []).map(d => d.id);
+        return insertedLedgerIds;
+      },
+      rollback: async (ids?: string[]) => {
+        const toDelete = ids || insertedLedgerIds;
+        if (toDelete.length > 0) {
+          await supabase.from('ledger').delete().in('id', toDelete);
+        }
+      }
+    });
+
+    // Step 2: Post Discount total as one Expense categorized dynamically under highest qty item category
     if (sale.discount && sale.discount > 0) {
       const discountEntry = {
         category_id: sale.discountCategoryId,
@@ -419,26 +497,60 @@ export default function POS() {
         description: `POS Discount Expense (Sale Ref: ${sale.id})`,
         created_at: sale.timestamp
       };
-      const { error: discountError } = await supabase.from('ledger').insert([discountEntry]);
-      if (discountError) throw discountError;
+      steps.push({
+        name: `Insert discount ledger expense`,
+        execute: async () => {
+          const { data, error } = await supabase.from('ledger').insert([discountEntry]).select('id');
+          if (error) throw error;
+          insertedDiscountId = data?.[0]?.id || null;
+          return insertedDiscountId;
+        },
+        rollback: async (id?: string | null) => {
+          const toDelete = id || insertedDiscountId;
+          if (toDelete) {
+            await supabase.from('ledger').delete().eq('id', toDelete);
+          }
+        }
+      });
     }
 
-    // 4. Subtract inventory stock in database safely
-    await Promise.all(sale.cart.map(async (cartItem) => {
-      const { data: latest } = await supabase
-        .from('inventory')
-        .select('quantity')
-        .eq('id', cartItem.item.id)
-        .single();
-      
-      const currentStock = latest?.quantity || 0;
-      const { error: updateError } = await supabase
-        .from('inventory')
-        .update({ quantity: Math.max(0, currentStock - cartItem.quantity) })
-        .eq('id', cartItem.item.id);
-      
-      if (updateError) throw updateError;
-    }));
+    // Step 3: Deduct inventory stock in database safely with compensating rollback per item
+    for (const cartItem of sale.cart) {
+      steps.push({
+        name: `Deduct stock for item ${cartItem.item.id} (-${cartItem.quantity})`,
+        execute: async () => {
+          const { data: latest, error: fetchError } = await supabase
+            .from('inventory')
+            .select('quantity')
+            .eq('id', cartItem.item.id)
+            .single();
+          if (fetchError) throw fetchError;
+
+          const currentStock = safeNum(latest?.quantity);
+          const newStock = Math.max(0, currentStock - safeNum(cartItem.quantity));
+          const { error: updateError } = await supabase
+            .from('inventory')
+            .update({ quantity: newStock })
+            .eq('id', cartItem.item.id);
+          if (updateError) throw updateError;
+
+          return { itemId: cartItem.item.id, prevStock: currentStock };
+        },
+        rollback: async (res?: { itemId: string; prevStock: number }) => {
+          if (res) {
+            await supabase
+              .from('inventory')
+              .update({ quantity: res.prevStock })
+              .eq('id', res.itemId);
+          }
+        }
+      });
+    }
+
+    const result = await executeAtomicTransaction(`Process POS Sale ${sale.id}`, steps);
+    if (!result.success) {
+      throw result.error || new Error('Sale transaction failed during atomic processing.');
+    }
   }
 
   // Deduct Local Stock immediately (no lag, 100% offline-first responsive feedback)
@@ -909,40 +1021,7 @@ export default function POS() {
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {filteredProducts.map(item => (
-                      <tr 
-                        key={item.id} 
-                        onClick={() => addToCart(item)}
-                        className={cn(
-                          "hover:bg-[#FFD700]/10 cursor-pointer transition-all duration-150 group",
-                          item.quantity <= 0 && "opacity-30 grayscale cursor-not-allowed"
-                        )}
-                      >
-                        <td className="px-4 py-2.5">
-                           <div className="flex items-center gap-2">
-                             <p className="font-black text-white text-xs group-hover:text-[#FFD700] transition-colors">{item.name}</p>
-                             {(item.active === false || String(item.active).toLowerCase() === 'false') && (
-                               <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-500 rounded text-[7px] font-black uppercase tracking-widest leading-none border border-rose-500/20">
-                                 Inactive
-                               </span>
-                             )}
-                           </div>
-                          <p className="text-[9px] text-slate-500 uppercase font-black tracking-wider mt-0.5">
-                            {CATEGORY_MAP[item.category_id] || item.category || 'General'}
-                          </p>
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-xs text-slate-400 group-hover:text-white transition-colors">{item.code}</td>
-                        <td className="px-4 py-2.5">
-                          <span className={cn(
-                            "text-[9px] font-black uppercase px-2 py-0.5 rounded-lg",
-                            item.quantity > 5 ? "text-emerald-400 bg-emerald-500/5 border border-emerald-500/10" : "text-rose-400 bg-rose-500/5 border border-rose-500/10"
-                          )}>
-                            {item.quantity} units
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-black text-[#FFD700] text-xs">
-                          ${safeNum(item.selling_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
+                      <ProductTableRow key={item.id} item={item} onAdd={addToCart} />
                     ))}
                   </tbody>
                 </table>
