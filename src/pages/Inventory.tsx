@@ -85,6 +85,14 @@ const AssetModal = React.memo(({ isOpen, editingItem, onClose, onSave }: AssetMo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) {
+      alert('Product Name is required.');
+      return;
+    }
+    if (!code.trim()) {
+      alert('Database Code (SKU) is required.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const payload = {
@@ -105,16 +113,16 @@ const AssetModal = React.memo(({ isOpen, editingItem, onClose, onSave }: AssetMo
   };
 
   return (
-    <div className="fixed inset-0 z-[130] flex justify-end">
+    <div className="fixed inset-0 z-[1100] flex justify-end">
       <div className="absolute inset-0 bg-[#0a0a0a]/80 backdrop-blur-md" onClick={onClose} />
       <div className="relative w-full max-w-md bg-[#0a0a0a] border-l border-white/10 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
         <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/5">
           <div>
             <h2 className="text-xl font-black text-[#FFD700] uppercase tracking-tighter">
-              {editingItem ? 'Modify Asset' : 'Register New Asset'}
+              {editingItem ? 'Edit Asset & Stock' : 'Add New Asset / Stock'}
             </h2>
             <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mt-1">
-              Vault Entry Protocol
+              Vault Stock Protocol
             </p>
           </div>
           <button 
@@ -1143,16 +1151,17 @@ export default function Inventory() {
               <span>Audit View</span>
             </button>
 
-            {/* Register Item */}
+            {/* Add Stock / Register Item */}
             <button 
               onClick={() => {
                 setEditingItem(null);
                 setIsModalOpen(true);
               }}
               className="flex items-center gap-2 px-5 py-3 bg-[#FFD700] text-[#0a0a0a] rounded-2xl text-xs font-black hover:bg-[#FFD700]/90 transition-all shadow-[0_0_20px_rgba(255,215,0,0.2)] active:scale-95 uppercase tracking-wider ml-auto lg:ml-0"
+              title="Add New Stock / Product"
             >
               <Plus size={16} />
-              Register Item
+              Add Stock / Product
             </button>
           </div>
         </div>
@@ -1394,15 +1403,21 @@ export default function Inventory() {
 
                     {/* Actions */}
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-end gap-2">
                         <button 
-                          onClick={() => setEditingItem(item)}
-                          className="p-2 text-slate-500 hover:text-[#FFD700] hover:bg-[#FFD700]/10 rounded-xl transition-all"
-                          title="Edit Item"
+                          type="button"
+                          onClick={() => {
+                            setEditingItem(item);
+                            setIsModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 bg-[#FFD700]/10 hover:bg-[#FFD700] text-[#FFD700] hover:text-[#0a0a0a] border border-[#FFD700]/30 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                          title="Edit Stock & Product Details"
                         >
-                          <Edit2 size={16} />
+                          <Edit2 size={13} />
+                          <span>Edit / Stock</span>
                         </button>
                         <button 
+                          type="button"
                           onClick={() => handleDelete(item.id)}
                           className="p-2 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
                           title="Delete Item"
@@ -1433,9 +1448,27 @@ export default function Inventory() {
                     <h3 className="font-black text-white uppercase tracking-tighter">{item.name}</h3>
                     <p className="text-[10px] text-slate-600 font-mono">{item.code || 'N/A'}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setEditingItem(item)} className="p-2 bg-white/5 rounded-lg text-slate-400 hover:text-[#FFD700]"><Edit2 size={14} /></button>
-                    <button onClick={() => handleDelete(item.id)} className="p-2 bg-rose-500/10 rounded-lg text-rose-500"><Trash2 size={14} /></button>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setEditingItem(item);
+                        setIsModalOpen(true);
+                      }} 
+                      className="px-3 py-1.5 bg-[#FFD700]/10 hover:bg-[#FFD700] text-[#FFD700] hover:text-[#0a0a0a] border border-[#FFD700]/30 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                      title="Edit Stock & Product Details"
+                    >
+                      <Edit2 size={13} />
+                      <span>Edit / Stock</span>
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => handleDelete(item.id)} 
+                      className="p-2 bg-rose-500/10 hover:bg-rose-500/20 rounded-xl text-rose-500 transition-all"
+                      title="Delete Item"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
 
